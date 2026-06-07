@@ -605,10 +605,26 @@ navBtns.forEach(btn=>{
 });
 $("addBtn").addEventListener("click", openAddSheet);
 
-// ── 헤더 날짜 ─────────────────────────────────────────
+// ── 헤더 날짜 + 사이드바 브랜드 ─────────────────────────
 (function(){
   const now = new Date();
-  $("headerDate").textContent = `${now.getMonth()+1}월 ${now.getDate()}일 · 나의 작은 아카이브`;
+  const dateStr = `${now.getMonth()+1}월 ${now.getDate()}일 · 나의 작은 아카이브`;
+  $("headerDate").textContent = dateStr;
+
+  // 태블릿/데스크탑: 사이드바에 날짜 서브텍스트 추가
+  const navDateEl = document.createElement("p");
+  navDateEl.id = "navDate";
+  navDateEl.textContent = dateStr;
+  navDateEl.style.cssText = "font-size:11px;color:var(--muted);padding:0 12px 12px;display:none;";
+  const nav = $("appNav");
+  nav.insertBefore(navDateEl, nav.firstChild);
+
+  // 768px 이상에서만 보이게
+  function checkWidth(){
+    navDateEl.style.display = window.innerWidth >= 768 ? "block" : "none";
+  }
+  checkWidth();
+  window.addEventListener("resize", checkWidth);
 })();
 
 // ── 서비스 워커 ───────────────────────────────────────

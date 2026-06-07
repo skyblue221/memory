@@ -69,8 +69,9 @@ img { display: block; }
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 8px 0 max(18px, env(safe-area-inset-bottom));
+  padding: 14px 0 max(18px, env(safe-area-inset-bottom));
   flex-shrink: 0;
+  position: relative;
 }
 
 .nav-btn {
@@ -95,16 +96,18 @@ img { display: block; }
   color: #fff;
   border: none;
   border-radius: 50%;
-  width: 50px;
-  height: 50px;
+  width: 52px;
+  height: 52px;
   font-size: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: -20px;
+  margin-top: -30px;
   box-shadow: 0 4px 16px rgba(106,173,207,0.45);
   flex-shrink: 0;
   transition: transform 150ms, box-shadow 150ms;
+  position: relative;
+  z-index: 10;
 }
 .nav-add:active { transform: scale(0.94); box-shadow: 0 2px 8px rgba(106,173,207,0.3); }
 
@@ -590,3 +593,122 @@ img { display: block; }
   margin-top: 4px;
 }
 .submit-btn:active { opacity: 0.85; }
+
+/* ── 반응형 (태블릿/데스크탑 768px+) ── */
+@media (min-width: 768px) {
+  body { background: var(--bg); }
+
+  #app {
+    max-width: 100%;
+    height: 100dvh;
+    flex-direction: row;
+  }
+
+  /* 사이드바 */
+  #appNav {
+    width: 220px;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    padding: 24px 16px max(24px, env(safe-area-inset-bottom));
+    border-top: none;
+    border-right: 0.5px solid rgba(106,173,207,0.2);
+    flex-shrink: 0;
+    gap: 4px;
+    overflow-y: auto;
+  }
+
+  /* 헤더를 사이드바 상단에 */
+  #appHeader {
+    display: none;
+  }
+
+  /* 사이드바 상단 브랜드 */
+  #appNav::before {
+    content: "기억수집함";
+    font-family: var(--serif);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--sky);
+    display: block;
+    padding: 4px 12px 20px;
+    border-bottom: 0.5px solid rgba(106,173,207,0.15);
+    margin-bottom: 8px;
+  }
+
+  .nav-btn {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    width: 100%;
+  }
+  .nav-btn:hover { background: var(--sky-light); }
+  .nav-btn.active { background: var(--sky-light); }
+  .nav-icon { font-size: 18px; }
+  .nav-label { font-size: 13px; }
+
+  .nav-add {
+    margin-top: 8px;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    width: 100%;
+    height: 44px;
+    font-size: 16px;
+    font-weight: 700;
+    gap: 8px;
+  }
+  .nav-add::after { content: "새 기록 담기"; font-family: var(--sans); font-size: 13px; font-weight: 600; }
+
+  /* 메인 영역 */
+  #appMain {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .view {
+    padding: 28px 32px 40px;
+    max-width: 900px;
+  }
+
+  /* 서가 — 더 넓게 */
+  .shelf-rail { gap: 6px; }
+
+  /* 폴라로이드 — 더 많이 */
+  .polaroid-grid { gap: 20px; }
+  .polaroid { width: 160px; }
+
+  /* 홈 최근 기록 */
+  .recent-list {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* 회상 월별 카드 */
+  .month-badges { gap: 8px; }
+
+  /* 상세 모달 */
+  .detail-modal { max-width: 480px; }
+
+  /* 바텀 시트 → 사이드 패널처럼 */
+  #sheetOverlay {
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .bottom-sheet {
+    border-radius: 20px;
+    max-width: 480px;
+    max-height: 85vh;
+    padding: 24px 28px max(32px, env(safe-area-inset-bottom));
+  }
+  .sheet-handle { display: none; }
+}
+
+@media (min-width: 1024px) {
+  #appNav { width: 240px; }
+  .view { padding: 32px 40px 48px; }
+  .polaroid { width: 170px; }
+  .recent-list { grid-template-columns: 1fr 1fr 1fr; }
+}
