@@ -1,163 +1,63 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#6aadcf" />
-    <title>기억수집함</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="icon" href="app-icon.png" type="image/png" />
-    <link rel="apple-touch-icon" href="app-icon.png" />
-    <link rel="stylesheet" href="styles.css?v=6" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="sidebar" aria-label="주요 메뉴">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"><img src="app-icon.png" alt="" /></span>
-          <div>
-            <strong>기억수집함</strong>
-            <small>나의 작은 아카이브</small>
-          </div>
-        </div>
-        <nav class="nav-tabs">
-          <button class="active" data-view="home"><span>⌁</span>홈</button>
-          <button data-view="shelf"><span>▥</span>서가</button>
-          <button data-view="memories"><span>◌</span>기억</button>
-          <button data-view="recall"><span>↺</span>회상</button>
-        </nav>
-        <div class="login-box">
-          <p id="loginState">Google 로그인 준비됨</p>
-          <button id="googleLogin" class="secondary-button">Google로 계속하기</button>
-          <button id="logoutButton" class="text-button" hidden>로그아웃</button>
-        </div>
-      </aside>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#6aadcf" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>기억수집함</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="app-icon.png" type="image/png" />
+  <link rel="apple-touch-icon" href="app-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 헤더 -->
+    <header id="appHeader">
+      <p id="headerDate" class="header-sub"></p>
+      <p class="header-title">기억수집함</p>
+    </header>
 
-      <main>
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">6월 7일 · 나의 작은 아카이브</p>
-            <h1>기억수집함</h1>
-          </div>
-          <div class="search-wrap">
-            <input id="searchInput" type="search" placeholder="책, 문장, 태그 검색" />
-            <button id="csvButton" class="icon-button" title="CSV 백업" aria-label="CSV 백업">↓</button>
-          </div>
-        </header>
+    <!-- 본문 -->
+    <main id="appMain">
+      <section id="view-home" class="view active"></section>
+      <section id="view-shelf" class="view"></section>
+      <section id="view-memories" class="view"></section>
+      <section id="view-recall" class="view"></section>
+    </main>
 
-        <section id="quickCapture" class="quick-capture" aria-label="빠른 기록" hidden>
-          <div class="section-head">
-            <div>
-              <p id="formEyebrow" class="eyebrow">책 담기</p>
-              <h2 id="formTitle">ISBN으로 책을 불러오기</h2>
-            </div>
-            <div class="type-tabs" role="tablist" aria-label="기록 유형">
-              <button class="active" data-form="book"><span>▤</span>책</button>
-              <button data-form="memory"><span>◍</span>기억</button>
-            </div>
-          </div>
+    <!-- 하단 탭바 -->
+    <nav id="appNav">
+      <button class="nav-btn active" data-tab="home"><span class="nav-icon">🏠</span><span class="nav-label">홈</span></button>
+      <button class="nav-btn" data-tab="shelf"><span class="nav-icon">📚</span><span class="nav-label">서가</span></button>
+      <button id="addBtn" class="nav-add">＋</button>
+      <button class="nav-btn" data-tab="memories"><span class="nav-icon">📷</span><span class="nav-label">기억</span></button>
+      <button class="nav-btn" data-tab="recall"><span class="nav-icon">↺</span><span class="nav-label">회상</span></button>
+    </nav>
+  </div>
 
-          <form id="recordForm" class="record-form">
-            <div class="form-grid form-book">
-              <label>ISBN
-                <div class="inline-field">
-                  <input name="isbn" inputmode="numeric" placeholder="예: 9788936433598" />
-                  <button type="button" id="isbnLookup" class="soft-button">찾기</button>
-                </div>
-              </label>
-              <label>제목<input name="title" placeholder="예: 모순" /></label>
-              <label>저자<input name="author" placeholder="예: 양귀자" /></label>
-              <label>완독일<input name="finishedDate" type="date" /></label>
-              <label class="wide">표지 URL<input name="coverUrl" placeholder="ISBN 찾기를 누르면 자동으로 채워져요" /></label>
-              <label class="wide">한줄평<input name="review" placeholder="생각보다 오래 남는 이야기" /></label>
-              <label class="wide">기억나는 문장<textarea name="quote" rows="2" placeholder="나중에 다시 만나고 싶은 문장"></textarea></label>
-            </div>
+  <!-- 상세 오버레이 -->
+  <div id="detailOverlay" class="overlay hidden">
+    <div id="detailModal" class="detail-modal"></div>
+  </div>
 
-            <div class="form-grid form-memory" hidden>
-              <label class="wide">사진 선택
-                <input name="memoryFile" type="file" accept="image/*" />
-              </label>
-              <label class="wide">짧은 메모
-                <textarea name="memoryContent" rows="3" placeholder="오래된 책방. 낡은 목재 선반. 커피 냄새. 비가 오는 날."></textarea>
-              </label>
-              <label>제목<input name="memoryTitle" placeholder="예: 비 오는 퇴근길" /></label>
-              <label>날짜<input name="memoryDate" type="date" /></label>
-              <label class="wide">태그<input name="memoryTags" placeholder="단상, 일상, 문장" /></label>
-            </div>
-
-            <div class="form-actions">
-              <span id="formHint">ISBN을 넣고 찾기를 누르면 가능한 정보가 자동으로 채워져요.</span>
-              <button class="primary-button" type="submit">담아두기</button>
-            </div>
-          </form>
-        </section>
-
-        <section id="home" class="view active">
-          <div class="today-block">
-            <p class="eyebrow">오늘의 기억</p>
-            <div id="todayMemory"></div>
-          </div>
-
-          <div class="section-head compact">
-            <h2>최근 기록</h2>
-          </div>
-          <div id="recentList" class="record-list"></div>
-        </section>
-
-        <section id="shelf" class="view">
-          <div class="section-head compact">
-            <h2>서가</h2>
-            <p>ISBN이나 표지 URL이 있으면 책 표지로 자동 채워집니다.</p>
-          </div>
-          <div id="shelfList" class="shelf-list"></div>
-        </section>
-
-        <section id="memories" class="view">
-          <div class="section-head compact">
-            <h2>기억</h2>
-            <p>사진이 있어도, 없어도 하나의 기억으로 모읍니다.</p>
-          </div>
-          <div id="memoryList"></div>
-        </section>
-
-        <section id="recall" class="view">
-          <div class="section-head compact">
-            <h2>회상</h2>
-            <p>과거의 나를 다시 만나는 시간</p>
-          </div>
-          <div id="recallList"></div>
-        </section>
-      </main>
-    </div>
-
-    <template id="emptyTemplate">
-      <div class="empty-state">
-        <strong>아직 담긴 기억이 없어요.</strong>
-        <span>책 한 권이나 짧은 문장 하나만 남겨도 충분합니다.</span>
-      </div>
-    </template>
-
-    <div id="bookOverlay" class="book-overlay">
-      <div class="book-modal-wrap">
-        <div class="book-modal" id="bookModal">
-          <div class="book-modal-inner" id="bookModalInner"></div>
-        </div>
-      </div>
-      <button id="detailClose" class="book-modal-close" type="button" aria-label="닫기">✕</button>
-    </div>
-
-    <div id="bottomSheetOverlay" class="bottom-sheet-overlay"></div>
+  <!-- 바텀 시트 -->
+  <div id="sheetOverlay" class="overlay hidden">
     <div id="bottomSheet" class="bottom-sheet">
-      <div class="bottom-sheet-handle"></div>
-      <button class="bottom-sheet-close" id="bottomSheetClose" aria-label="닫기">✕</button>
-      <div class="bottom-sheet-content">
-        <div id="bottomSheetForm"></div>
-      </div>
+      <div class="sheet-handle"></div>
+      <div id="sheetContent"></div>
     </div>
+  </div>
 
-    <script src="app.js?v=6"></script>
-  </body>
+  <template id="emptyTpl">
+    <div class="empty-state">아직 담긴 기억이 없어요.</div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
 </html>

@@ -1,964 +1,620 @@
-const STORAGE_KEY = "memory-box-records";
-const USER_KEY = "memory-box-user";
-const VERSION_KEY = "memory-box-version";
-const DATA_VERSION = "3";
+// ── 상수 ──────────────────────────────────────────────
+const STORAGE_KEY  = "membox-records-v1";
+const VERSION_KEY  = "membox-version";
+const DATA_VERSION = "1";
 
-const seedRecords = [
-  {
-    id: "seed-book-1",
-    type: "book",
-    isbn: "9788936433598",
-    title: "채식주의자",
-    author: "한강",
-    coverUrl: "https://covers.openlibrary.org/b/isbn/9788936433598-L.jpg",
-    finishedDate: "2025-06-07",
-    date: "2025-06-07",
-    review: "오랫동안 머릿속을 맴돌았다.",
-    quote: "다시 펼치면 다른 나를 만나게 될 것 같다.",
-    tags: ["소설", "한강"],
-    createdAt: "2025-06-07T09:00:00.000Z"
-  },
-  {
-    id: "seed-memory-1",
-    type: "memory",
-    title: "비 오는 퇴근길",
-    content: "오늘은 조금 마음이 편했다. 빗소리가 좋았어.",
-    imageUrl: "",
-    date: "2025-06-07",
-    tags: ["일상", "비"],
-    createdAt: "2025-06-07T18:30:00.000Z"
-  },
-  {
-    id: "seed-memory-2",
-    type: "memory",
-    title: "요즘 자꾸 생각나는 것들",
-    content: "오래된 책방. 낡은 목재 선반. 커피 냄새. 비가 오는 날.",
-    imageUrl: "",
-    date: "2026-06-03",
-    tags: ["단상"],
-    createdAt: "2026-06-03T12:00:00.000Z"
-  }
-];
-
-const state = {
-  activeForm: "book",
-  activeView: "home",
-  search: "",
-  records: loadRecords(),
-  user: JSON.parse(localStorage.getItem(USER_KEY) || "null")
-};
-
-const els = {
-  navTabs: document.querySelectorAll(".nav-tabs button"),
-  typeTabs: document.querySelectorAll(".type-tabs button"),
-  form: document.querySelector("#recordForm"),
-  search: document.querySelector("#searchInput"),
-  csv: document.querySelector("#csvButton"),
-  quickCapture: document.querySelector("#quickCapture"),
-  formEyebrow: document.querySelector("#formEyebrow"),
-  formTitle: document.querySelector("#formTitle"),
-  formHint: document.querySelector("#formHint"),
-  isbnLookup: document.querySelector("#isbnLookup"),
-  detailDialog: document.querySelector("#detailDialog"),
-  detailClose: document.querySelector("#detailClose"),
-  detailContent: document.querySelector("#detailContent"),
-  login: document.querySelector("#googleLogin"),
-  logout: document.querySelector("#logoutButton"),
-  loginState: document.querySelector("#loginState"),
-  todayMemory: document.querySelector("#todayMemory"),
-  recentList: document.querySelector("#recentList"),
-  shelfList: document.querySelector("#shelfList"),
-  memoryList: document.querySelector("#memoryList"),
-  recallList: document.querySelector("#recallList"),
-  emptyTemplate: document.querySelector("#emptyTemplate")
-};
-
-document.querySelectorAll("input[type='date']").forEach((input) => {
-  input.value = new Date().toISOString().slice(0, 10);
-});
-
-els.navTabs.forEach((button) => {
-  button.addEventListener("click", () => setView(button.dataset.view));
-});
-
-els.typeTabs.forEach((button) => {
-  button.addEventListener("click", () => setForm(button.dataset.form));
-});
-
-els.isbnLookup.addEventListener("click", lookupIsbn);
-
-els.form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const formData = new FormData(els.form);
-  const record = await buildRecord(formData);
-  if (!record) return;
-  state.records = [record, ...state.records];
-  persist();
-  els.form.reset();
-  document.querySelectorAll("input[type='date']").forEach((input) => {
-    input.value = new Date().toISOString().slice(0, 10);
-  });
-  render();
-});
-
-els.search.addEventListener("input", (event) => {
-  state.search = event.target.value.trim().toLowerCase();
-  render();
-});
-
-els.csv.addEventListener("click", exportCsv);
-
-els.login.addEventListener("click", () => {
-  state.user = { name: "Google 사용자", email: "demo@memory-box.local" };
-  localStorage.setItem(USER_KEY, JSON.stringify(state.user));
-  renderLogin();
-});
-
-els.logout.addEventListener("click", () => {
-  state.user = null;
-  localStorage.removeItem(USER_KEY);
-  renderLogin();
-});
-
-document.addEventListener("click", (event) => {
-  const openRecord = event.target.closest("[data-open-record]");
-  if (openRecord) {
-    showRecordDetail(openRecord.dataset.openRecord);
-    return;
-  }
-
-  const deleteButton = event.target.closest("[data-delete]");
-  if (!deleteButton) return;
-  state.records = state.records.filter((record) => record.id !== deleteButton.dataset.delete);
-  persist();
-  render();
-});
-
-els.detailClose.addEventListener("click", closeBookOverlay);
-
-document.addEventListener("click", (e) => {
-  const overlay = document.getElementById("bookOverlay");
-  if (e.target === overlay) closeBookOverlay();
-});
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeBookOverlay();
-});
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js?v=6").catch(() => {});
-}
-
-render();
-
-function loadRecords() {
-  if (localStorage.getItem(VERSION_KEY) !== DATA_VERSION) {
-    localStorage.setItem(VERSION_KEY, DATA_VERSION);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(seedRecords));
-    return seedRecords;
-  }
-  const saved = localStorage.getItem(STORAGE_KEY);
-  const records = saved ? JSON.parse(saved) : seedRecords;
-  return records.map(normalizeRecord);
-}
-
-function normalizeRecord(record) {
-  if (record.type === "photo" || record.type === "note") {
-    return {
-      ...record,
-      type: "memory",
-      title: record.title || "기억",
-      tags: record.tags || []
-    };
-  }
-  return record;
-}
-
-function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.records));
-}
-
-function setView(view) {
-  state.activeView = view;
-  if (view !== "home") els.quickCapture.hidden = true;
-  document.querySelectorAll(".view").forEach((section) => {
-    section.classList.toggle("active", section.id === view);
-  });
-  els.navTabs.forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === view);
-  });
-}
-
-function showCapture(form) {
-  setView("home");
-  els.quickCapture.hidden = false;
-  setForm(form);
-}
-
-function setForm(form) {
-  state.activeForm = form;
-  els.typeTabs.forEach((button) => {
-    button.classList.toggle("active", button.dataset.form === form);
-  });
-  document.querySelector(".form-book").hidden = form !== "book";
-  document.querySelector(".form-memory").hidden = form !== "memory";
-  if (form === "book") {
-    els.formEyebrow.textContent = "책 담기";
-    els.formTitle.textContent = "ISBN으로 책을 불러오기";
-    els.formHint.textContent = "ISBN을 넣고 찾기를 누르면 제목, 저자, 표지 주소가 가능한 만큼 자동으로 채워져요.";
-    return;
-  }
-  els.formEyebrow.textContent = "기억 담기";
-  els.formTitle.textContent = "사진이 있어도 없어도 괜찮은 기록";
-  els.formHint.textContent = "사진 한 장을 붙이거나, 짧은 문장만 남겨도 하나의 기억으로 저장돼요.";
-}
-
-async function lookupIsbn() {
-  const isbnInput = els.form.elements.isbn;
-  const isbn = clean(isbnInput.value).replaceAll("-", "");
-  if (!isbn) {
-    window.alert("ISBN을 먼저 입력해주세요.");
-    return;
-  }
-
-  els.isbnLookup.textContent = "찾는 중";
-  els.isbnLookup.disabled = true;
-  try {
-    const response = await fetch(`https://openlibrary.org/isbn/${encodeURIComponent(isbn)}.json`);
-    const book = response.ok ? await response.json() : {};
-    const title = book.title || "";
-    const authorNames = await fetchAuthorNames(book.authors || []);
-
-    if (title && !els.form.elements.title.value) els.form.elements.title.value = title;
-    if (authorNames && !els.form.elements.author.value) els.form.elements.author.value = authorNames;
-    els.form.elements.coverUrl.value = `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg`;
-  } catch (error) {
-    els.form.elements.coverUrl.value = `https://covers.openlibrary.org/b/isbn/${encodeURIComponent(isbn)}-L.jpg`;
-    window.alert("제목 정보는 못 찾았지만, 표지 주소는 ISBN으로 채워두었어요.");
-  } finally {
-    els.isbnLookup.textContent = "찾기";
-    els.isbnLookup.disabled = false;
-  }
-}
-
-async function fetchAuthorNames(authors) {
-  const names = await Promise.all(
-    authors.slice(0, 3).map(async (author) => {
-      if (!author.key) return "";
-      const response = await fetch(`https://openlibrary.org${author.key}.json`);
-      if (!response.ok) return "";
-      const data = await response.json();
-      return data.name || "";
-    })
-  );
-  return names.filter(Boolean).join(", ");
-}
-
-async function buildRecord(formData) {
-  const now = new Date();
-  if (state.activeForm === "book") {
-    const title = clean(formData.get("title"));
-    const isbn = clean(formData.get("isbn")).replaceAll("-", "");
-    if (!title && !isbn) return alertAndNull("책 제목이나 ISBN 중 하나는 남겨주세요.");
-    const coverUrl = clean(formData.get("coverUrl")) || (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : "");
-    return {
-      id: crypto.randomUUID(),
-      type: "book",
-      isbn,
-      title: title || `ISBN ${isbn}`,
-      author: clean(formData.get("author")),
-      coverUrl,
-      finishedDate: formData.get("finishedDate") || today(),
-      date: formData.get("finishedDate") || today(),
-      review: clean(formData.get("review")),
-      quote: clean(formData.get("quote")),
-      tags: ["책"],
-      createdAt: now.toISOString()
-    };
-  }
-
-  const file = formData.get("memoryFile");
-  const imageUrl = file && file.size ? await readPhoto(file) : "";
-  const content = clean(formData.get("memoryContent"));
-  const title = clean(formData.get("memoryTitle")) || firstLine(content) || "오늘의 기억";
-  if (!imageUrl && !content && !title) return alertAndNull("사진이나 짧은 메모 중 하나는 남겨주세요.");
-  return {
-    id: crypto.randomUUID(),
-    type: "memory",
-    title,
-    content,
-    imageUrl,
-    date: formData.get("memoryDate") || today(),
-    tags: splitTags(formData.get("memoryTags")),
-    createdAt: now.toISOString()
-  };
-}
-
-function alertAndNull(message) {
-  window.alert(message);
-  return null;
-}
-
-function readPhoto(file) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.readAsDataURL(file);
-  });
-}
-
-function clean(value) {
-  return String(value || "").trim();
-}
-
-function firstLine(value) {
-  return clean(value).split(/\n|\. /)[0].slice(0, 24);
-}
-
-function splitTags(value) {
-  return clean(value)
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function render() {
-  renderLogin();
-  const records = filteredRecords();
-  renderStats();
-  renderRecent(records);
-  renderShelf(records);
-  renderMemories(records);
-  renderRecall(records);
-}
-
-function renderLogin() {
-  if (state.user) {
-    els.loginState.textContent = `${state.user.name}로 보관 중`;
-    els.login.hidden = true;
-    els.logout.hidden = false;
-    return;
-  }
-  els.loginState.textContent = "Google 로그인 준비됨";
-  els.login.hidden = false;
-  els.logout.hidden = true;
-}
-
-function filteredRecords() {
-  if (!state.search) return [...state.records].sort(byDateDesc);
-  return state.records
-    .filter((record) => {
-      const haystack = [
-        record.type,
-        record.title,
-        record.author,
-        record.content,
-        record.review,
-        record.quote,
-        record.isbn,
-        ...(record.tags || [])
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(state.search);
-    })
-    .sort(byDateDesc);
-}
-
-function byDateDesc(a, b) {
-  return new Date(b.date) - new Date(a.date);
-}
-
-function renderStats() {
-  renderTodayMemory(state.records);
-}
-
-function buildSummary(records) {
-  if (!records.length) return "아직 이번 달의 결을 찾는 중이에요.";
-  const bookCount = records.filter((record) => record.type === "book").length;
-  const memoryCount = records.filter((record) => record.type === "memory").length;
-  const photoCount = records.filter((record) => record.type === "memory" && record.imageUrl).length;
-  const memoCount = records.filter((record) => record.type === "memory" && !record.imageUrl).length;
-  const tags = records.flatMap((record) => record.tags || []);
-  const focus = tags[0] ? `${tags[0]}에 마음이 머문` : "작은 순간을 붙잡은";
-  return `읽은 책 ${bookCount}권, 사진 ${photoCount}장, 메모 ${memoCount}개. ${focus} 시기였습니다.`;
-}
-
-function renderTodayMemory(records) {
-  const now = new Date();
-  const monthDay = now.toISOString().slice(5, 10);
-  const memories = records.filter((record) => record.date.slice(5, 10) === monthDay && record.date.slice(0, 4) !== String(now.getFullYear()));
-  const record = memories[0] || records.sort(byDateDesc)[0];
-  if (!record) {
-    els.todayMemory.innerHTML = emptyHtml();
-    return;
-  }
-  const years = now.getFullYear() - Number(record.date.slice(0, 4));
-  els.todayMemory.innerHTML = `
-    <h3>${years > 0 ? `${years}년 전 오늘` : "최근의 기억"}</h3>
-    <p>${iconFor(record)} ${escapeHtml(titleFor(record))}</p>
-    <span>${escapeHtml(descriptionFor(record))}</span>
-  `;
-}
-
-function renderRecent(records) {
-  renderList(els.recentList, records.slice(0, 6));
-}
-
-function renderShelf(records) {
-  const books = records.filter((record) => record.type === "book");
-  if (!books.length) {
-    els.shelfList.innerHTML = emptyHtml();
-    return;
-  }
-  const grouped = groupBy(books, (book) => (book.finishedDate || book.date).slice(0, 4));
-  els.shelfList.innerHTML = Object.entries(grouped)
-    .sort(([a], [b]) => Number(b) - Number(a))
-    .map(([year, yearBooks]) => `
-      <div class="shelf-year">
-        <div class="shelf-year-label">
-          <h3>${year}년</h3>
-          <span>${yearBooks.length}권</span>
-        </div>
-        <div class="shelf-frame">
-          <div class="book-rail">
-            ${yearBooks.map(bookCover).join("")}
-          </div>
-        </div>
-      </div>
-    `)
-    .join("");
-}
-
-// 책 표지 색상 팔레트 — 서재 느낌의 따뜻한 톤들
 const SPINE_COLORS = [
-  ["#8b5e3c","#6b4428"], ["#4a7c6f","#2f5c52"], ["#7a5c7e","#5a3c5e"],
-  ["#5c7a9e","#3c5a7e"], ["#8e7050","#6e5030"], ["#6b8a5c","#4b6a3c"],
-  ["#9e6060","#7e4040"], ["#607890","#405870"], ["#7a6e5a","#5a4e3a"],
-  ["#4e6e8a","#2e4e6a"], ["#8a6e4a","#6a4e2a"], ["#5e7a6e","#3e5a4e"],
+  ["#8b5e3c","#6b4428"],["#4a7c6f","#2f5c52"],["#7a5c7e","#5a3c5e"],
+  ["#5c7a9e","#3c5a7e"],["#8e7050","#6e5030"],["#6b8a5c","#4b6a3c"],
+  ["#9e6060","#7e4040"],["#607890","#405870"],["#7a6e5a","#5a4e3a"],
 ];
 
-function bookCover(book) {
-  // 책마다 일관된 랜덤값 — id 기반으로 고정
-  const seed = book.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const colorPair = SPINE_COLORS[seed % SPINE_COLORS.length];
-  const bookW = 38 + (seed % 5) * 6;    // 38~62px — 두꺼운 책등
-  const bookH = 130 + (seed % 6) * 16;  // 130~210px
-  const styleVars = `--book-w:${bookW}px; --book-h:${bookH}px;`;
-  const fontSize = bookW >= 52 ? "13px" : bookW >= 44 ? "12px" : "11px";
+const MEMO_BG = ["#f5f0e6","#eef3f0","#eeedf5","#f5eeee","#eef3f5"];
 
-  const coverInner = book.coverUrl
-    ? `<img class="book-cover" src="${escapeAttr(book.coverUrl)}"
-         alt="${escapeAttr(book.title)} 표지" loading="lazy"
-         style="width:${bookW}px; height:${bookH}px;"
-         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-       <div class="book-cover-text" style="display:none; width:${bookW}px; height:${bookH}px;
-         font-size:${fontSize};
-         background:linear-gradient(160deg,${colorPair[0]},${colorPair[1]});">
-         ${escapeHtml(book.title)}
-       </div>`
-    : `<div class="book-cover-text"
-         style="width:${bookW}px; height:${bookH}px;
-         font-size:${fontSize};
-         background:linear-gradient(160deg,${colorPair[0]},${colorPair[1]});">
-         ${escapeHtml(book.title)}
-       </div>`;
+const SEED_DATA = [
+  { id:"b1", type:"book", title:"채식주의자", author:"한강",
+    isbn:"9788936433598",
+    coverUrl:"https://covers.openlibrary.org/b/isbn/9788936433598-L.jpg",
+    finishedDate:"2025-06-08", date:"2025-06-08",
+    review:"오랫동안 머릿속을 맴돌았다.",
+    quote:"다시 펼치면 다른 나를 만나게 될 것 같다.",
+    tags:["소설","한강"] },
+  { id:"b2", type:"book", title:"모순", author:"양귀자",
+    isbn:"9788937461033",
+    coverUrl:"https://covers.openlibrary.org/b/isbn/9788937461033-L.jpg",
+    finishedDate:"2026-05-10", date:"2026-05-10",
+    review:"생각보다 오래 남는 이야기", tags:["소설"] },
+  { id:"b3", type:"book", title:"작별하지 않는다", author:"한강",
+    isbn:"9788936434571",
+    coverUrl:"https://covers.openlibrary.org/b/isbn/9788936434571-L.jpg",
+    finishedDate:"2024-03-20", date:"2024-03-20",
+    review:"기억은 사랑의 다른 이름이다.", tags:["소설"] },
+  { id:"m1", type:"memory", title:"비 오는 퇴근길",
+    content:"오늘은 조금 마음이 편했다. 빗소리가 좋았어.",
+    imageUrl:"", date:"2025-06-08", tags:["일상","비"] },
+  { id:"m2", type:"memory", title:"요즘 자꾸 생각나는 것들",
+    content:"오래된 책방. 낡은 목재 선반. 커피 냄새.",
+    imageUrl:"", date:"2026-06-03", tags:["단상"] },
+  { id:"m3", type:"memory", title:"노을",
+    content:"오늘은 조금 평온했다",
+    imageUrl:"", date:"2026-06-05", tags:["일상"] },
+  { id:"m4", type:"memory", title:"전시 준비",
+    content:"생각보다 잘 될 것 같다",
+    imageUrl:"", date:"2026-06-03", tags:["타임클라우드"] },
+  { id:"m5", type:"memory", title:"모니터링단 아이디어",
+    content:"온라인 폼 + 알림톡 연계해보면 어떨까",
+    imageUrl:"", date:"2026-06-04", tags:["업무","아이디어"] },
+];
 
-  return `
-    <button class="book-spine" type="button"
-      data-open-record="${escapeAttr(book.id)}"
-      title="${escapeAttr(book.title)}"
-      style="${styleVars}">
-      ${coverInner}
-      <small>${escapeHtml(book.title)}</small>
-    </button>
-  `;
+// ── 유틸 ──────────────────────────────────────────────
+function seedN(str){ return str.split("").reduce((a,c)=>a+c.charCodeAt(0),0); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function fmt(iso){
+  if(!iso) return "";
+  const [y,m,d] = iso.split("-");
+  return `${y}년 ${+m}월 ${+d}일`;
+}
+function esc(str){
+  return String(str||"")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function groupBy(arr, fn){
+  return arr.reduce((a,x)=>{ const k=fn(x); (a[k]=a[k]||[]).push(x); return a; }, {});
+}
+function tagsHtml(tags){
+  if(!tags||!tags.length) return "";
+  return `<div class="tag-row">${tags.map(t=>`<span class="tag">#${esc(t)}</span>`).join("")}</div>`;
 }
 
-function showRecordDetail(id) {
-  const record = state.records.find((item) => item.id === id);
-  if (!record) return;
-  const overlay = document.getElementById("bookOverlay");
-  const modal = document.getElementById("bookModal");
-  const inner = document.getElementById("bookModalInner");
-  inner.innerHTML = record.type === "book" ? bookDetail(record) : memoryDetail(record);
-  modal.classList.remove("open");
-  overlay.classList.add("show");
-  requestAnimationFrame(() => requestAnimationFrame(() => modal.classList.add("open")));
+// ── 데이터 ────────────────────────────────────────────
+function loadRecords(){
+  if(localStorage.getItem(VERSION_KEY) !== DATA_VERSION){
+    localStorage.setItem(VERSION_KEY, DATA_VERSION);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_DATA));
+    return [...SEED_DATA];
+  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [...SEED_DATA]; }
+  catch(_){ return [...SEED_DATA]; }
+}
+function saveRecords(records){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
 }
 
-function closeBookOverlay() {
-  const overlay = document.getElementById("bookOverlay");
-  const modal = document.getElementById("bookModal");
-  modal.classList.remove("open");
-  setTimeout(() => overlay.classList.remove("show"), 300);
+// ── 상태 ──────────────────────────────────────────────
+let state = {
+  tab: "home",
+  records: loadRecords(),
+};
+
+// ── DOM refs ──────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const views = {
+  home:     $("view-home"),
+  shelf:    $("view-shelf"),
+  memories: $("view-memories"),
+  recall:   $("view-recall"),
+};
+const navBtns      = document.querySelectorAll(".nav-btn");
+const detailOverlay = $("detailOverlay");
+const detailModal   = $("detailModal");
+const sheetOverlay  = $("sheetOverlay");
+const sheetContent  = $("sheetContent");
+
+// ── 탭 전환 ───────────────────────────────────────────
+function setTab(tab){
+  state.tab = tab;
+  Object.entries(views).forEach(([id, el])=>{
+    el.classList.toggle("active", id === tab);
+  });
+  navBtns.forEach(btn=>{
+    btn.classList.toggle("active", btn.dataset.tab === tab);
+  });
+  renderView(tab);
 }
 
-function bookDetail(book) {
-  const seed = book.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const colorPair = SPINE_COLORS[seed % SPINE_COLORS.length];
-  const coverHtml = book.coverUrl
-    ? `<img src="${escapeAttr(book.coverUrl)}" alt="${escapeAttr(book.title)} 표지"
-         onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
-       <div class="book-modal-cover-fallback" style="display:none;background:linear-gradient(160deg,${colorPair[0]},${colorPair[1]});">${escapeHtml(book.title)}</div>`
-    : `<div class="book-modal-cover-fallback" style="background:linear-gradient(160deg,${colorPair[0]},${colorPair[1]});">${escapeHtml(book.title)}</div>`;
+// ── 렌더 진입 ─────────────────────────────────────────
+function renderView(tab){
+  if(tab==="home")     renderHome();
+  if(tab==="shelf")    renderShelf();
+  if(tab==="memories") renderMemories();
+  if(tab==="recall")   renderRecall();
+}
 
-  let sections = "";
-  if (book.review) sections += `
-    <div class="book-modal-section">
-      <span class="book-modal-label">한줄평</span>
-      <p class="book-modal-review">"${escapeHtml(book.review)}"</p>
-    </div><hr class="book-modal-divider">`;
-  if (book.quote) sections += `
-    <div class="book-modal-section">
-      <span class="book-modal-label">기억나는 문장</span>
-      <p class="book-modal-quote" style="border-color:${colorPair[0]};">${escapeHtml(book.quote)}</p>
-    </div><hr class="book-modal-divider">`;
+// ── 홈 ───────────────────────────────────────────────
+function renderHome(){
+  const now = new Date();
+  const mmdd = now.toISOString().slice(5,10);
+  const yr = String(now.getFullYear());
+  const records = [...state.records].sort((a,b)=>b.date.localeCompare(a.date));
 
-  return `
-    <div class="book-modal-cover" style="background:linear-gradient(160deg,${colorPair[0]},${colorPair[1]});">
-      ${coverHtml}
-    </div>
-    <div class="book-modal-body">
-      <p class="book-modal-eyebrow">${book.finishedDate ? `완독일 · ${escapeHtml(book.finishedDate)}` : "읽은 책"}</p>
-      <h2 class="book-modal-title">${escapeHtml(book.title)}</h2>
-      <p class="book-modal-author">${escapeHtml(book.author || "저자 미상")}</p>
-      <hr class="book-modal-divider">
-      ${sections}
-      ${tagHtml(book)}
+  const todayMems = records.filter(r=>r.date.slice(5,10)===mmdd && r.date.slice(0,4)!==yr);
+  const featured = todayMems[0] || records[0];
+  const recent = records.slice(0,5);
+
+  let html = "";
+
+  // 오늘의 기억
+  html += `<p class="section-eyebrow">오늘의 기억</p>`;
+  if(featured){
+    const yago = now.getFullYear() - +featured.date.slice(0,4);
+    const label = yago > 0 ? `${yago}년 전 오늘` : "최근의 기억";
+    const desc = featured.review || featured.content || "";
+    html += `<div class="today-card">
+      <p class="today-label">${esc(label)}</p>
+      <p class="today-title">${esc(featured.title)}</p>
+      ${desc ? `<p class="today-desc">"${esc(desc)}"</p>` : ""}
     </div>`;
-}
-
-function memoryDetail(memory) {
-  return `
-    <article class="detail-layout">
-      ${memory.imageUrl ? `<img class="detail-cover" src="${escapeAttr(memory.imageUrl)}" alt="${escapeAttr(memory.title)}" />` : `<div class="detail-cover placeholder">◍</div>`}
-      <div class="detail-copy">
-        <p class="eyebrow">${escapeHtml(memory.date)}</p>
-        <h2>${escapeHtml(memory.title)}</h2>
-        <p>${escapeHtml(memory.content || "사진으로 남겨둔 기억")}</p>
-        ${tagHtml(memory)}
-      </div>
-    </article>
-  `;
-}
-
-function renderMemories(records) {
-  const memories = records.filter((record) => record.type === "memory");
-  if (!memories.length) {
-    els.memoryList.innerHTML = emptyHtml();
-    return;
+  } else {
+    html += `<div class="today-card"><p class="today-desc">첫 기억을 남겨볼까요?</p></div>`;
   }
-  els.memoryList.innerHTML = memories
-    .map((memory) => `
-      <article class="memory-note ${memory.imageUrl ? "has-photo" : ""}">
-        ${memory.imageUrl ? `<img src="${memory.imageUrl}" alt="${escapeAttr(memory.title)}" loading="lazy" />` : `<div class="paper-preview">${escapeHtml(memory.date)}</div>`}
-        <div>
-          <h3>${iconFor(memory)} ${escapeHtml(memory.title)}</h3>
-          <strong class="memory-kind">${memory.imageUrl ? "사진 기억" : "메모"}</strong>
-          <p>${escapeHtml(memory.content || "사진으로 남겨둔 기억")}</p>
-          ${tagHtml(memory)}
+
+  // 최근 기록
+  html += `<p class="section-eyebrow">최근 기록</p><div class="recent-list">`;
+  recent.forEach(r=>{
+    const s = seedN(r.id);
+    const [c1,c2] = SPINE_COLORS[s % SPINE_COLORS.length];
+    const thumbContent = r.type==="book" && r.coverUrl
+      ? `<img src="${esc(r.coverUrl)}" alt="" onerror="this.style.display='none'">`
+      : r.type==="book" ? "📚" : r.imageUrl ? `<img src="${esc(r.imageUrl)}" alt="">` : "📝";
+    html += `<div class="recent-item">
+      <div class="recent-thumb" style="background:linear-gradient(160deg,${c1},${c2})">${thumbContent}</div>
+      <div style="flex:1;min-width:0">
+        <p class="recent-title">${esc(r.title)}</p>
+        <p class="recent-date">${fmt(r.date)}</p>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  views.home.innerHTML = html;
+}
+
+// ── 서가 ─────────────────────────────────────────────
+function renderShelf(){
+  const books = state.records.filter(r=>r.type==="book");
+  if(!books.length){ views.shelf.innerHTML = `<p class="empty-state">아직 읽은 책이 없어요.</p>`; return; }
+
+  const byYear = groupBy(books, b=>(b.finishedDate||b.date).slice(0,4));
+  let html = `<p class="section-eyebrow">나의 서가</p>`;
+
+  Object.entries(byYear).sort(([a],[b])=>+b-+a).forEach(([year, ybooks])=>{
+    html += `<div class="shelf-year">
+      <div class="shelf-year-label">
+        <span class="shelf-year-title">${esc(year)}년</span>
+        <span class="shelf-year-count">${ybooks.length}권</span>
+      </div>
+      <div class="shelf-frame">
+        <div class="shelf-rail">`;
+
+    ybooks.forEach(b=>{
+      const s = seedN(b.id);
+      const [c1,c2] = SPINE_COLORS[s % SPINE_COLORS.length];
+      const w = 36 + (s%5)*5;
+      const h = 120 + (s%6)*14;
+      html += `<button class="book-spine-btn" data-id="${esc(b.id)}" title="${esc(b.title)}">
+        <div class="book-spine-inner" style="width:${w}px;height:${h}px">
+          ${b.coverUrl
+            ? `<img class="book-spine-img" src="${esc(b.coverUrl)}" alt="${esc(b.title)}"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div class="book-spine-text" style="display:none;background:linear-gradient(160deg,${c1},${c2})">${esc(b.title)}</div>`
+            : `<div class="book-spine-text" style="background:linear-gradient(160deg,${c1},${c2})">${esc(b.title)}</div>`
+          }
         </div>
-      </article>
-    `)
-    .join("");
-}
+      </button>`;
+    });
 
-function renderRecall(records) {
-  if (!records.length) {
-    els.recallList.innerHTML = emptyHtml();
-    return;
-  }
-  const grouped = groupBy(records, (record) => record.date.slice(0, 7));
-  els.recallList.innerHTML = Object.entries(grouped)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([month, monthRecords]) => {
-      const counts = countTypes(monthRecords);
-      return `
-        <section class="recall-month">
-          <div class="recall-summary">
-            <div>
-              <p class="eyebrow">${formatMonth(month)}</p>
-              <h3>AI 회상 요약</h3>
-              <p>${escapeHtml(buildSummary(monthRecords))}</p>
-            </div>
-            <div class="recall-counts">
-              <span>▤ 책 ${counts.books}권</span>
-              <span>◉ 사진 ${counts.photos}장</span>
-              <span>◍ 메모 ${counts.memos}개</span>
-            </div>
-          </div>
-          <div class="recall-items">
-            ${monthRecords.sort(byDateDesc).map(recallItem).join("")}
-          </div>
-        </section>
-      `;
-    })
-    .join("");
-}
-
-function recallItem(record) {
-  return `
-    <article class="record-card recall-card">
-      <div class="time-label">${escapeHtml(record.date)}</div>
-      <div class="record-meta">
-        <h3>${iconFor(record)} ${escapeHtml(titleFor(record))}</h3>
-        <p>${escapeHtml(descriptionFor(record))}</p>
-        ${tagHtml(record)}
-      </div>
-    </article>
-  `;
-}
-
-function countTypes(records) {
-  return {
-    books: records.filter((record) => record.type === "book").length,
-    photos: records.filter((record) => record.type === "memory" && record.imageUrl).length,
-    memos: records.filter((record) => record.type === "memory" && !record.imageUrl).length
-  };
-}
-
-function formatMonth(month) {
-  const [year, monthNumber] = month.split("-");
-  return `${year}년 ${Number(monthNumber)}월`;
-}
-
-function renderList(target, records) {
-  if (!records.length) {
-    target.innerHTML = emptyHtml();
-    return;
-  }
-  target.innerHTML = records.map(recordCard).join("");
-}
-
-function recordCard(record) {
-  const image = imageFor(record);
-  return `
-    <article class="record-card">
-      ${image}
-      <div class="record-meta">
-        <h3>${iconFor(record)} ${escapeHtml(titleFor(record))}</h3>
-        <p>${escapeHtml(descriptionFor(record))}</p>
-        ${tagHtml(record)}
-      </div>
-      <button class="delete-button" data-delete="${record.id}" title="삭제" aria-label="삭제">×</button>
-    </article>
-  `;
-}
-
-function imageFor(record) {
-  const image = record.coverUrl || record.imageUrl;
-  if (image) return `<img class="record-thumb" src="${escapeAttr(image)}" alt="${escapeAttr(titleFor(record))}" loading="lazy" />`;
-  return `<div class="record-thumb note-thumb">${iconFor(record)}</div>`;
-}
-
-function titleFor(record) {
-  return record.title || (record.type === "book" ? "책" : "기억");
-}
-
-function descriptionFor(record) {
-  if (record.type === "book") return record.review || record.quote || record.author || record.finishedDate || "읽은 책";
-  return record.content || record.date;
-}
-
-function iconFor(record) {
-  if (record.type === "book") return "▤";
-  return record.imageUrl ? "◉" : "◍";
-}
-
-function tagHtml(record) {
-  if (!record.tags || !record.tags.length) return "";
-  return `<div class="tag-row">${record.tags.map((tag) => `<span class="tag">#${escapeHtml(tag)}</span>`).join("")}</div>`;
-}
-
-function groupBy(items, getKey) {
-  return items.reduce((acc, item) => {
-    const key = getKey(item);
-    acc[key] = acc[key] || [];
-    acc[key].push(item);
-    return acc;
-  }, {});
-}
-
-function emptyHtml() {
-  return els.emptyTemplate.innerHTML;
-}
-
-function exportCsv() {
-  const headers = ["id", "type", "isbn", "title", "content", "date", "tags", "author", "finishedDate", "review", "quote", "coverUrl", "imageUrl"];
-  const rows = state.records.map((record) => headers.map((header) => csvCell(Array.isArray(record[header]) ? record[header].join("|") : record[header] || "")).join(","));
-  const blob = new Blob([[headers.join(","), ...rows].join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `memory-box-${today()}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function csvCell(value) {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function escapeAttr(value) {
-  return escapeHtml(value);
-}
-
-// ── 기억: 폴라로이드 월별 렌더링 ──
-function renderMemories(records) {
-  const memories = records.filter((record) => record.type === "memory");
-  if (!memories.length) {
-    els.memoryList.innerHTML = emptyHtml();
-    return;
-  }
-
-  // 월별 그룹핑
-  const byMonth = {};
-  memories.forEach(m => {
-    const month = m.date.slice(0, 7);
-    if (!byMonth[month]) byMonth[month] = [];
-    byMonth[month].push(m);
+    html += `</div><div class="shelf-plank"></div></div></div>`;
   });
 
-  els.memoryList.innerHTML = Object.entries(byMonth)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([month, mems]) => {
-      const [year, mon] = month.split('-');
-      const monthLabel = `${year}년 ${parseInt(mon)}월`;
-      return `
-        <div class="memory-section">
-          <div class="memory-section-title">${monthLabel}</div>
-          <div class="polaroid-grid">
-            ${mems.map(m => renderPolaroid(m)).join('')}
-          </div>
-        </div>
-      `;
-    })
-    .join('');
+  views.shelf.innerHTML = html;
+  views.shelf.querySelectorAll(".book-spine-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>openDetail(btn.dataset.id));
+  });
 }
 
-function renderPolaroid(memory) {
-  const photoHtml = memory.imageUrl
-    ? `<img class="polaroid-photo" src="${escapeAttr(memory.imageUrl)}" alt="${escapeAttr(memory.title)}" loading="lazy" />`
-    : `<div class="polaroid-memo-area">📝</div>`;
+// ── 기억 ─────────────────────────────────────────────
+function renderMemories(){
+  const mems = state.records.filter(r=>r.type==="memory");
+  if(!mems.length){ views.memories.innerHTML = `<p class="empty-state">아직 담긴 기억이 없어요.</p>`; return; }
 
-  const captionHtml = memory.content
-    ? `<p class="polaroid-caption">"${escapeHtml(memory.content)}"</p>`
-    : `<p class="polaroid-caption" style="opacity:0.4;">${escapeHtml(memory.title)}</p>`;
+  const byMonth = groupBy(mems, m=>m.date.slice(0,7));
+  let html = "";
 
-  const tagsHtml = memory.tags && memory.tags.length
-    ? `<div class="polaroid-tags">${memory.tags.map(t => `<span class="ptag">#${escapeHtml(t)}</span>`).join('')}</div>`
-    : '';
+  Object.entries(byMonth).sort(([a],[b])=>b.localeCompare(a)).forEach(([month, mlist])=>{
+    const [y,mo] = month.split("-");
+    html += `<div style="margin-bottom:28px">
+      <p class="section-divider">${esc(y)}년 ${+mo}월</p>
+      <div class="polaroid-grid">`;
 
-  return `
-    <div class="polaroid" data-open-record="${escapeAttr(memory.id)}">
-      ${photoHtml}
-      ${captionHtml}
-      <p class="polaroid-date">${memory.date}</p>
-      ${tagsHtml}
-    </div>
-  `;
+    mlist.forEach((m,i)=>{
+      const rot = [-1.8,1.2,-0.6,2.1,-1.2][i%5];
+      const s = seedN(m.id);
+      const tape = i%2===0 ? `<div class="polaroid-tape"></div>` : "";
+      const caption = m.content
+        ? `"${esc(m.content.slice(0,18))}${m.content.length>18?"…":""}"`
+        : esc(m.title);
+      const photo = m.imageUrl
+        ? `<img class="polaroid-photo" src="${esc(m.imageUrl)}" alt="${esc(m.title)}">`
+        : `<div class="polaroid-memo" style="background:${MEMO_BG[s%MEMO_BG.length]}">📝</div>`;
+
+      html += `<button class="polaroid" data-id="${esc(m.id)}"
+        style="transform:rotate(${rot}deg)">
+        ${tape}${photo}
+        <p class="polaroid-caption">${caption}</p>
+        <p class="polaroid-date">${m.date.slice(5).replace("-",".")}</p>
+      </button>`;
+    });
+
+    html += `</div></div>`;
+  });
+
+  views.memories.innerHTML = html;
+  views.memories.querySelectorAll(".polaroid").forEach(btn=>{
+    btn.addEventListener("click", ()=>openDetail(btn.dataset.id));
+  });
 }
 
-// ── 회상: 월별 요약 ──
-function renderRecall(records) {
-  if (!records.length) {
-    els.recallList.innerHTML = emptyHtml();
-    return;
-  }
-
+// ── 회상 ─────────────────────────────────────────────
+function renderRecall(){
   const now = new Date();
-  const today = now.toISOString().slice(5, 10);
-  const thisYear = now.getFullYear();
-  const thisMonth = (now.getMonth() + 1).toString().padStart(2, '0');
+  const mmdd = now.toISOString().slice(5,10);
+  const yr = now.getFullYear();
+  const records = state.records;
+
+  let html = "";
 
   // 오늘의 추억
-  const todayMemories = records.filter(r => r.date.slice(5, 10) === today && r.date.slice(0, 4) !== String(thisYear));
-
-  let html = `<div class="recall-section">
-    <div class="recall-section-title">오늘의 추억 — ${parseInt(today.slice(0, 2))}월 ${parseInt(today.slice(3, 5))}일</div>
-    <div>`;
-
-  if (todayMemories.length) {
-    todayMemories.slice(0, 3).forEach(r => {
-      const yearsAgo = thisYear - parseInt(r.date.slice(0, 4));
-      const badgeText = yearsAgo > 0 ? `${yearsAgo}년 전` : '올해';
-      const icon = r.type === 'book' ? '📚' : '📷';
-      const desc = r.type === 'book' ? (r.review || r.quote || '') : (r.content || '');
-      html += `
-        <div class="today-memory" data-open-record="${escapeAttr(r.id)}">
-          <span class="today-badge">${badgeText}</span>
-          <div class="today-content">
-            <h3><span>${icon}</span> ${escapeHtml(r.title)}</h3>
-            ${desc ? `<p>"${escapeHtml(desc)}"</p>` : ''}
-          </div>
-        </div>`;
-    });
+  const todayRecs = records.filter(r=>r.date.slice(5,10)===mmdd && +r.date.slice(0,4)<yr);
+  html += `<p class="section-divider">오늘의 추억 — ${+mmdd.slice(0,2)}월 ${+mmdd.slice(3,5)}일</p>`;
+  if(!todayRecs.length){
+    html += `<p style="font-size:13px;color:var(--muted);padding:12px 0 20px">아직 이 날의 기억이 없어요.</p>`;
   } else {
-    html += `<p style="padding:12px;color:var(--muted);font-size:12px;">아직 이 날의 기억이 없어요.</p>`;
+    todayRecs.slice(0,3).forEach(r=>{
+      const yago = yr - +r.date.slice(0,4);
+      const icon = r.type==="book" ? "📚" : "📷";
+      const desc = r.review || r.content || "";
+      html += `<div class="recall-today-item">
+        <span class="recall-badge">${yago}년 전</span>
+        <div>
+          <p class="recall-title">${icon} ${esc(r.title)}</p>
+          ${desc ? `<p class="recall-desc">"${esc(desc)}"</p>` : ""}
+        </div>
+      </div>`;
+    });
   }
-  html += `</div></div>`;
 
-  // 월별 과거 (지난달, 1년 전 이번달, 2년 전 이번달)
+  // 월별 요약
   const pastMonths = [
-    { offset: -1, label: '지난달' },
-    { offset: -12, label: '1년 전 이번달' },
-    { offset: -24, label: '2년 전 이번달' }
+    {offset:-1, label:"지난달"},
+    {offset:-12, label:"1년 전 이번달"},
+    {offset:-24, label:"2년 전 이번달"},
   ];
+  pastMonths.forEach(({offset,label})=>{
+    const t = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    const ym = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}`;
+    const recs = records.filter(r=>r.date.startsWith(ym));
+    if(!recs.length) return;
 
-  pastMonths.forEach(({ offset, label }) => {
-    const targetDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-    const targetMonth = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
-    const monthRecs = records.filter(r => r.date.startsWith(targetMonth));
+    const bc = recs.filter(r=>r.type==="book").length;
+    const pc = recs.filter(r=>r.type==="memory"&&r.imageUrl).length;
+    const mc = recs.filter(r=>r.type==="memory"&&!r.imageUrl).length;
+    const tags = recs.flatMap(r=>r.tags||[]);
+    const focus = tags[0] ? `${tags[0]}에 마음이 머문` : "작은 순간을 붙잡은";
+    const summary = `${focus} 시기였습니다.`;
 
-    if (monthRecs.length) {
-      const monthDisplay = `${targetDate.getFullYear()}년 ${targetDate.getMonth() + 1}월`;
-      const monthsAgo = Math.abs(offset);
-      const monthsAgoText = monthsAgo === 1 ? '1개월 전' : monthsAgo === 12 ? '1년 전' : `${Math.floor(monthsAgo / 12)}년 전`;
-
-      const bookCount = monthRecs.filter(r => r.type === 'book').length;
-      const photoCount = monthRecs.filter(r => r.type === 'memory' && r.imageUrl).length;
-      const memoCount = monthRecs.filter(r => r.type === 'memory' && !r.imageUrl).length;
-
-      const summary = buildSummary(monthRecs);
-
-      html += `
-        <div class="recall-section">
-          <div class="recall-section-title">${monthDisplay} — ${label}</div>
-          <div class="month-card">
-            <div class="month-header">
-              <h3>${monthDisplay}</h3>
-              <span class="month-elapsed">${monthsAgoText}</span>
-            </div>
-            <div class="count-badges">
-              <span class="count-badge">📚 책 ${bookCount}권</span>
-              <span class="count-badge">📷 사진 ${photoCount}장</span>
-              <span class="count-badge">📝 메모 ${memoCount}개</span>
-            </div>
-            <p class="ai-summary">${escapeHtml(summary)}</p>
-          </div>
-        </div>`;
-    }
+    html += `<div style="margin-bottom:20px">
+      <p class="section-divider">${t.getFullYear()}년 ${t.getMonth()+1}월 — ${esc(label)}</p>
+      <div class="month-card">
+        <div class="month-card-header">
+          <span class="month-card-title">${t.getFullYear()}년 ${t.getMonth()+1}월</span>
+        </div>
+        <div class="month-badges">
+          <span class="month-badge">📚 책 ${bc}권</span>
+          <span class="month-badge">📷 사진 ${pc}장</span>
+          <span class="month-badge">📝 메모 ${mc}개</span>
+        </div>
+        <p class="month-summary">${esc(summary)}</p>
+      </div>
+    </div>`;
   });
 
-  els.recallList.innerHTML = html;
+  views.recall.innerHTML = html;
 }
 
-// ── 바텀 시트 ──
-function openBottomSheet(formType) {
-  const overlay = document.getElementById('bottomSheetOverlay');
-  const sheet = document.getElementById('bottomSheet');
-  const form = document.getElementById('bottomSheetForm');
+// ── 상세 오버레이 ──────────────────────────────────────
+function openDetail(id){
+  const r = state.records.find(x=>x.id===id);
+  if(!r) return;
 
-  if (formType === 'book') {
-    form.innerHTML = `
-      <div class="section-head compact">
-        <h2>책 담기</h2>
-        <p>ISBN으로 책을 불러오세요.</p>
+  const s = seedN(r.id);
+  const [c1,c2] = SPINE_COLORS[s % SPINE_COLORS.length];
+
+  let html = "";
+  if(r.type==="book"){
+    html = `<div class="detail-book-grid">
+      <div class="detail-book-cover" style="background:linear-gradient(160deg,${c1},${c2})">
+        ${r.coverUrl
+          ? `<img class="detail-cover-img" src="${esc(r.coverUrl)}" alt="${esc(r.title)}"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+             <div class="detail-cover-fallback" style="display:none">${esc(r.title)}</div>`
+          : `<div class="detail-cover-fallback">${esc(r.title)}</div>`}
       </div>
-      <form id="bottomForm" class="record-form">
-        <div class="form-grid">
-          <label>ISBN
-            <div class="inline-field">
-              <input name="isbn" inputmode="numeric" placeholder="예: 9788936433598" />
-              <button type="button" id="isbnLookupBtn" class="soft-button">찾기</button>
-            </div>
-          </label>
-          <label>제목<input name="title" placeholder="예: 모순" /></label>
-          <label>저자<input name="author" placeholder="예: 양귀자" /></label>
-          <label>완독일<input name="finishedDate" type="date" /></label>
-          <label class="wide">한줄평<input name="review" placeholder="선택사항" /></label>
-          <label class="wide">기억나는 문장<textarea name="quote" rows="2" placeholder="선택사항"></textarea></label>
+      <div class="detail-book-body">
+        <button class="detail-close-btn" id="detailCloseBtn">✕</button>
+        <div>
+          <p class="detail-eyebrow">완독일 · ${esc(r.finishedDate||r.date)}</p>
+          <p class="detail-title">${esc(r.title)}</p>
+          <p class="detail-author">${esc(r.author||"저자 미상")}</p>
         </div>
-        <div class="form-actions">
-          <button class="primary-button" type="submit">담아두기</button>
-        </div>
-      </form>`;
-
-    document.getElementById('isbnLookupBtn').addEventListener('click', lookupIsbn);
-    document.getElementById('bottomForm').addEventListener('submit', handleBottomFormSubmit);
-  } else if (formType === 'memory') {
-    form.innerHTML = `
-      <div class="section-head compact">
-        <h2>기억 담기</h2>
-        <p>사진이 있어도, 없어도 괜찮습니다.</p>
+        ${r.review ? `<hr class="detail-divider">
+          <div><p class="detail-section-label">한줄평</p>
+          <p class="detail-review">"${esc(r.review)}"</p></div>` : ""}
+        ${r.quote ? `<hr class="detail-divider">
+          <div><p class="detail-section-label">기억나는 문장</p>
+          <p class="detail-quote" style="border-left:2px solid ${c1}">${esc(r.quote)}</p></div>` : ""}
+        ${tagsHtml(r.tags)}
       </div>
-      <form id="bottomForm" class="record-form">
-        <div class="form-grid">
-          <label class="wide">사진 선택
-            <input name="memoryFile" type="file" accept="image/*" />
-          </label>
-          <label>제목<input name="memoryTitle" placeholder="예: 비 오는 퇴근길" /></label>
-          <label class="wide">메모<textarea name="memoryContent" rows="3" placeholder="선택사항 · 사진 없이 글만 남겨도 좋습니다."></textarea></label>
-          <label>날짜<input name="memoryDate" type="date" /></label>
-          <label class="wide">태그<input name="memoryTags" placeholder="일상, 사진, 단상" /></label>
-        </div>
-        <div class="form-actions">
-          <button class="primary-button" type="submit">담아두기</button>
-        </div>
-      </form>`;
-
-    document.getElementById('bottomForm').addEventListener('submit', handleBottomFormSubmit);
+    </div>`;
+  } else {
+    html = `<div class="detail-memory">
+      <div class="detail-memory-header">
+        <p class="detail-memory-date">${fmt(r.date)}</p>
+        <button class="detail-close-btn" id="detailCloseBtn">✕</button>
+      </div>
+      ${r.imageUrl ? `<img class="detail-memory-img" src="${esc(r.imageUrl)}" alt="${esc(r.title)}">` : ""}
+      <p class="detail-memory-title">${esc(r.title)}</p>
+      ${r.content ? `<p class="detail-memory-content">"${esc(r.content)}"</p>` : ""}
+      ${tagsHtml(r.tags)}
+    </div>`;
   }
 
-  overlay.classList.add('show');
-  sheet.classList.add('show');
+  detailModal.innerHTML = html;
+  detailOverlay.classList.remove("hidden");
+  document.getElementById("detailCloseBtn").addEventListener("click", closeDetail);
 }
 
-function closeBottomSheet() {
-  const overlay = document.getElementById('bottomSheetOverlay');
-  const sheet = document.getElementById('bottomSheet');
-  overlay.classList.remove('show');
-  sheet.classList.remove('show');
+function closeDetail(){
+  detailOverlay.classList.add("hidden");
+}
+detailOverlay.addEventListener("click", e=>{ if(e.target===detailOverlay) closeDetail(); });
+
+// ── 바텀 시트 ─────────────────────────────────────────
+function openAddSheet(){
+  renderPickStep();
+  sheetOverlay.classList.remove("hidden");
+}
+function closeSheet(){
+  sheetOverlay.classList.add("hidden");
+}
+sheetOverlay.addEventListener("click", e=>{ if(e.target===sheetOverlay) closeSheet(); });
+
+function renderPickStep(){
+  sheetContent.innerHTML = `
+    <div class="sheet-header"><span></span>
+      <button class="sheet-close-btn" id="sheetCloseBtn">✕</button>
+    </div>
+    <p class="sheet-title">무엇을 담을까요?</p>
+    <div class="sheet-pick-grid">
+      <button class="sheet-pick-btn" id="pickBook">
+        <span class="sheet-pick-icon">📚</span>
+        <strong class="sheet-pick-label">책 담기</strong>
+        <p class="sheet-pick-sub">읽은 책을 서가에</p>
+      </button>
+      <button class="sheet-pick-btn" id="pickMemory">
+        <span class="sheet-pick-icon">📷</span>
+        <strong class="sheet-pick-label">기억 담기</strong>
+        <p class="sheet-pick-sub">사진이나 메모를</p>
+      </button>
+    </div>`;
+  $("sheetCloseBtn").addEventListener("click", closeSheet);
+  $("pickBook").addEventListener("click", ()=>renderBookForm());
+  $("pickMemory").addEventListener("click", ()=>renderMemoryForm());
 }
 
-async function handleBottomFormSubmit(e) {
-  e.preventDefault();
-  const formData = new FormData(e.target);
-  const record = await buildRecord(formData);
-  if (!record) return;
+function inp(placeholder, name, small=false){
+  return `<input class="form-input ${small?"":"" }" name="${name}" placeholder="${esc(placeholder)}" style="margin-bottom:10px;font-size:${small?12:14}px">`;
+}
+function textarea(placeholder, name, rows=3){
+  return `<textarea class="form-textarea" name="${name}" placeholder="${esc(placeholder)}" rows="${rows}" style="margin-bottom:10px"></textarea>`;
+}
+
+function renderBookForm(){
+  sheetContent.innerHTML = `
+    <div class="sheet-header">
+      <button class="sheet-back-btn" id="sheetBackBtn">← 뒤로</button>
+      <button class="sheet-close-btn" id="sheetCloseBtn">✕</button>
+    </div>
+    <p class="sheet-title">📚 책 담기</p>
+    <div class="isbn-row">
+      <input class="form-input isbn-input" id="isbnInput" name="isbn" placeholder="ISBN (예: 9788936433598)" inputmode="numeric" style="margin-bottom:0;font-size:14px">
+      <button class="isbn-btn" id="isbnBtn">찾기</button>
+    </div>
+    <div id="coverPreview" class="cover-preview" style="display:none">
+      <img id="coverPreviewImg" src="" alt="표지" onerror="this.parentElement.style.display='none'">
+    </div>
+    <input class="form-input" id="titleInput" name="title" placeholder="제목" style="margin-bottom:10px;font-size:14px">
+    <div class="form-field">
+      <label class="form-label">표지 이미지 (선택)</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <label class="cover-upload-label">📷 사진 선택
+          <input type="file" accept="image/*" id="coverFileInput" style="display:none">
+        </label>
+        <span class="cover-or">또는</span>
+      </div>
+      <input class="form-input" id="coverUrlInput" name="coverUrl" placeholder="이미지 URL 붙여넣기 (알라딘·교보 등)" style="margin-bottom:0;font-size:12px">
+    </div>
+    <input class="form-input" id="authorInput" name="author" placeholder="저자 (선택)" style="margin-bottom:10px;font-size:14px">
+    <input class="form-input" name="review" id="reviewInput" placeholder="한줄평 (선택)" style="margin-bottom:10px;font-size:14px">
+    <textarea class="form-textarea" name="quote" id="quoteInput" placeholder="기억나는 문장 (선택)" rows="2" style="margin-bottom:10px"></textarea>
+    <label class="form-label">완독일</label>
+    <input class="form-input" type="date" id="dateInput" value="${today()}" style="margin-bottom:16px">
+    <button class="submit-btn" id="bookSubmitBtn">담아두기</button>`;
+
+  $("sheetBackBtn").addEventListener("click", renderPickStep);
+  $("sheetCloseBtn").addEventListener("click", closeSheet);
+  $("isbnBtn").addEventListener("click", lookupIsbn);
+  $("coverFileInput").addEventListener("change", handleCoverFile);
+  $("coverUrlInput").addEventListener("input", e=>{
+    const url = e.target.value.trim();
+    if(url){ $("coverPreviewImg").src=url; $("coverPreview").style.display="flex"; }
+    else $("coverPreview").style.display="none";
+  });
+  $("bookSubmitBtn").addEventListener("click", saveBook);
+}
+
+async function lookupIsbn(){
+  const isbn = $("isbnInput").value.replaceAll("-","").trim();
+  if(!isbn){ alert("ISBN을 먼저 입력해주세요."); return; }
+  const btn = $("isbnBtn");
+  btn.textContent = "…"; btn.disabled = true;
+  try {
+    const res = await fetch(`https://openlibrary.org/isbn/${isbn}.json`);
+    const data = res.ok ? await res.json() : {};
+    if(data.title && !$("titleInput").value) $("titleInput").value = data.title;
+
+    // 저자 자동
+    if(data.authors && data.authors.length > 0){
+      try {
+        const aRes = await fetch(`https://openlibrary.org${data.authors[0].key}.json`);
+        const aData = aRes.ok ? await aRes.json() : {};
+        if(aData.name && !$("authorInput").value) $("authorInput").value = aData.name;
+      } catch(_){}
+    }
+    // 표지
+    const coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+    $("coverUrlInput").value = coverUrl;
+    $("coverPreviewImg").src = coverUrl;
+    $("coverPreview").style.display = "flex";
+  } catch(_){
+    const coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`;
+    $("coverUrlInput").value = coverUrl;
+    $("coverPreviewImg").src = coverUrl;
+    $("coverPreview").style.display = "flex";
+  } finally {
+    btn.textContent = "찾기"; btn.disabled = false;
+  }
+}
+
+function handleCoverFile(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    $("coverUrlInput").value = reader.result;
+    $("coverPreviewImg").src = reader.result;
+    $("coverPreview").style.display = "flex";
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveBook(){
+  const title = $("titleInput").value.trim();
+  const isbn = $("isbnInput").value.replaceAll("-","").trim();
+  if(!title && !isbn){ alert("제목이나 ISBN을 입력해주세요."); return; }
+
+  const record = {
+    id: Date.now()+"",
+    type: "book",
+    title: title || `ISBN ${isbn}`,
+    author: $("authorInput").value.trim(),
+    isbn,
+    coverUrl: $("coverUrlInput").value.trim() || (isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg` : ""),
+    review: $("reviewInput").value.trim(),
+    quote: $("quoteInput").value.trim(),
+    finishedDate: $("dateInput").value || today(),
+    date: $("dateInput").value || today(),
+    tags: ["책"],
+    createdAt: new Date().toISOString(),
+  };
   state.records = [record, ...state.records];
-  persist();
-  render();
-  closeBottomSheet();
+  saveRecords(state.records);
+  closeSheet();
+  setTab("shelf");
 }
 
-// 이벤트 위임
-document.addEventListener('click', (e) => {
-  if (e.target.closest('[data-open-record]')) {
-    const id = e.target.closest('[data-open-record]').dataset.openRecord;
-    showRecordDetail(id);
-  }
+function renderMemoryForm(){
+  sheetContent.innerHTML = `
+    <div class="sheet-header">
+      <button class="sheet-back-btn" id="sheetBackBtn">← 뒤로</button>
+      <button class="sheet-close-btn" id="sheetCloseBtn">✕</button>
+    </div>
+    <p class="sheet-title">📷 기억 담기</p>
+    <div class="form-field">
+      <label class="cover-upload-label" style="margin-bottom:10px">📷 사진 선택
+        <input type="file" accept="image/*" id="memPhotoInput" style="display:none">
+      </label>
+      <div id="memPhotoPreview" style="display:none;margin-bottom:10px">
+        <img id="memPhotoPreviewImg" style="width:100%;border-radius:10px;max-height:160px;object-fit:cover">
+      </div>
+    </div>
+    <input class="form-input" id="memTitleInput" placeholder="제목 (선택)" style="margin-bottom:10px;font-size:14px">
+    <textarea class="form-textarea" id="memContentInput" placeholder="메모 (선택) — 사진 없이 글만 남겨도 좋아요" rows="3" style="margin-bottom:10px"></textarea>
+    <input class="form-input" id="memTagsInput" placeholder="태그 (쉼표로 구분, 예: 일상, 단상)" style="margin-bottom:10px;font-size:14px">
+    <label class="form-label">날짜</label>
+    <input class="form-input" type="date" id="memDateInput" value="${today()}" style="margin-bottom:16px">
+    <button class="submit-btn" id="memSubmitBtn">담아두기</button>`;
+
+  $("sheetBackBtn").addEventListener("click", renderPickStep);
+  $("sheetCloseBtn").addEventListener("click", closeSheet);
+  $("memPhotoInput").addEventListener("change", e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      $("memPhotoPreviewImg").src = reader.result;
+      $("memPhotoPreview").style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  });
+  $("memSubmitBtn").addEventListener("click", saveMemory);
+}
+
+function saveMemory(){
+  const title = $("memTitleInput").value.trim();
+  const content = $("memContentInput").value.trim();
+  if(!title && !content){ alert("제목이나 메모를 입력해주세요."); return; }
+
+  const imageUrl = $("memPhotoPreviewImg").src && $("memPhotoPreview").style.display!=="none"
+    ? $("memPhotoPreviewImg").src : "";
+
+  const record = {
+    id: Date.now()+"",
+    type: "memory",
+    title: title || content.slice(0,20) || "기억",
+    content,
+    imageUrl,
+    date: $("memDateInput").value || today(),
+    tags: $("memTagsInput").value.split(",").map(t=>t.trim()).filter(Boolean),
+    createdAt: new Date().toISOString(),
+  };
+  state.records = [record, ...state.records];
+  saveRecords(state.records);
+  closeSheet();
+  setTab("memories");
+}
+
+// ── ESC 키 ────────────────────────────────────────────
+document.addEventListener("keydown", e=>{
+  if(e.key==="Escape"){ closeDetail(); closeSheet(); }
 });
 
-// 바텀 시트 닫기
-document.getElementById('bottomSheetClose').addEventListener('click', closeBottomSheet);
-document.getElementById('bottomSheetOverlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('bottomSheetOverlay')) closeBottomSheet();
+// ── 이벤트 연결 ───────────────────────────────────────
+navBtns.forEach(btn=>{
+  btn.addEventListener("click", ()=>setTab(btn.dataset.tab));
 });
+$("addBtn").addEventListener("click", openAddSheet);
 
-// 네비게이션 + 버튼
-const addButton = document.createElement('button');
-addButton.className = 'nav-add-button';
-addButton.innerHTML = '<span>＋</span>';
-addButton.addEventListener('click', (e) => {
-  e.stopPropagation();
-  // 책/기억 선택 모달 또는 직접 열기
-  // 일단 선택 없이 기억부터 열어보기
-  openBottomSheet('memory');
-});
+// ── 헤더 날짜 ─────────────────────────────────────────
+(function(){
+  const now = new Date();
+  $("headerDate").textContent = `${now.getMonth()+1}월 ${now.getDate()}일 · 나의 작은 아카이브`;
+})();
 
+// ── 서비스 워커 ───────────────────────────────────────
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+}
+
+// ── 시작 ──────────────────────────────────────────────
+setTab("home");
