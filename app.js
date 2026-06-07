@@ -444,7 +444,7 @@ function renderBookForm(){
       </div>
       <input class="form-input" id="coverUrlInput" name="coverUrl" placeholder="이미지 URL 붙여넣기 (알라딘·교보 등)" style="margin-bottom:0;font-size:12px">
     </div>
-    <input class="form-input" id="authorInput" name="author" placeholder="저자 (선택)" style="margin-bottom:10px;font-size:14px">
+    <input class="form-input" id="authorInput" name="author" placeholder="저자 (ISBN 찾기로 자동 입력)" style="margin-bottom:10px;font-size:14px">
     <input class="form-input" name="review" id="reviewInput" placeholder="한줄평 (선택)" style="margin-bottom:10px;font-size:14px">
     <textarea class="form-textarea" name="quote" id="quoteInput" placeholder="기억나는 문장 (선택)" rows="2" style="margin-bottom:10px"></textarea>
     <label class="form-label">완독일</label>
