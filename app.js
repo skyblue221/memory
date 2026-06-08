@@ -3,6 +3,53 @@ const STORAGE_KEY  = "membox-records-v1";
 const VERSION_KEY  = "membox-version";
 const DATA_VERSION = "1";
 
+// ── Supabase ──────────────────────────────────────────
+const SUPA_URL = "https://isipaiefpiugdtbgrwmo.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlzaXBhaWVmcGl1Z2R0Ymdyd21vIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MTMxMTEsImV4cCI6MjA5NjQ4OTExMX0.GJjd65CgqM20LvfZMwxdlmR1if4mJehBWjii8JpYeXk";
+
+const supa = {
+  async getAll() {
+    const res = await fetch(`${SUPA_URL}/rest/v1/records?order=date.desc`, {
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+    if (!res.ok) return null;
+    const rows = await res.json();
+    return rows.map(r => ({
+      id: r.id, type: r.type, title: r.title, author: r.author,
+      isbn: r.isbn, coverUrl: r.cover_url, content: r.content,
+      imageUrl: r.image_url, review: r.review, quote: r.quote,
+      finishedDate: r.finished_date, date: r.date,
+      tags: r.tags || [], createdAt: r.created_at,
+    }));
+  },
+  async upsert(record) {
+    const row = {
+      id: record.id, type: record.type, title: record.title,
+      author: record.author || null, isbn: record.isbn || null,
+      cover_url: record.coverUrl || null, content: record.content || null,
+      image_url: record.imageUrl || null, review: record.review || null,
+      quote: record.quote || null, finished_date: record.finishedDate || null,
+      date: record.date, tags: record.tags || [],
+      created_at: record.createdAt || new Date().toISOString(),
+    };
+    await fetch(`${SUPA_URL}/rest/v1/records`, {
+      method: "POST",
+      headers: {
+        apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+      },
+      body: JSON.stringify(row),
+    });
+  },
+  async deleteAll() {
+    await fetch(`${SUPA_URL}/rest/v1/records?id=neq.none`, {
+      method: "DELETE",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+    });
+  }
+};
+
 const SPINE_COLORS = [
   ["#8b5e3c","#6b4428"],["#4a7c6f","#2f5c52"],["#7a5c7e","#5a3c5e"],
   ["#5c7a9e","#3c5a7e"],["#8e7050","#6e5030"],["#6b8a5c","#4b6a3c"],
@@ -69,16 +116,42 @@ function tagsHtml(tags){
 
 // ── 데이터 ────────────────────────────────────────────
 function loadRecords(){
-  if(localStorage.getItem(VERSION_KEY) !== DATA_VERSION){
-    localStorage.setItem(VERSION_KEY, DATA_VERSION);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_DATA));
-    return [...SEED_DATA];
-  }
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [...SEED_DATA]; }
-  catch(_){ return [...SEED_DATA]; }
+  // localStorage 폴백 (Supabase 로드 전 임시)
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch(_){}
+  return [];
 }
+
 function saveRecords(records){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+}
+
+async function syncFromSupabase(){
+  try {
+    const rows = await supa.getAll();
+    if (rows && rows.length > 0) {
+      state.records = rows;
+      saveRecords(rows);
+      renderView(state.tab);
+    } else if (rows && rows.length === 0) {
+      // Supabase 비어있으면 localStorage도 비우기
+      state.records = [];
+      saveRecords([]);
+      renderView(state.tab);
+    }
+  } catch(_){
+    console.warn("Supabase 연결 실패, localStorage 사용");
+  }
+}
+
+async function addRecord(record){
+  state.records = [record, ...state.records];
+  saveRecords(state.records);
+  renderView(state.tab);
+  // 백그라운드로 Supabase에 저장
+  try { await supa.upsert(record); } catch(_){}
 }
 
 // ── 상태 ──────────────────────────────────────────────
@@ -199,12 +272,13 @@ function renderHome(){
 
   const clearBtn = document.getElementById("clearDataBtn");
   if(clearBtn){
-    clearBtn.addEventListener("click", ()=>{
+    clearBtn.addEventListener("click", async ()=>{
       if(confirm("모든 기록이 완전히 삭제됩니다.\n되돌릴 수 없어요. 계속할까요?")){
         localStorage.removeItem(STORAGE_KEY);
         localStorage.setItem(VERSION_KEY, DATA_VERSION);
         state.records = [];
         renderView(state.tab);
+        try { await supa.deleteAll(); } catch(_){}
       }
     });
   }
@@ -570,8 +644,7 @@ function saveBook(){
     tags: ["책"],
     createdAt: new Date().toISOString(),
   };
-  state.records = [record, ...state.records];
-  saveRecords(state.records);
+  addRecord(record);
   closeSheet();
   setTab("shelf");
 }
@@ -631,8 +704,7 @@ function saveMemory(){
     tags: $("memTagsInput").value.split(",").map(t=>t.trim()).filter(Boolean),
     createdAt: new Date().toISOString(),
   };
-  state.records = [record, ...state.records];
-  saveRecords(state.records);
+  addRecord(record);
   closeSheet();
   setTab("memories");
 }
@@ -677,3 +749,4 @@ if("serviceWorker" in navigator){
 
 // ── 시작 ──────────────────────────────────────────────
 setTab("home");
+syncFromSupabase(); // Supabase에서 최신 데이터 로드
