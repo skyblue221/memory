@@ -58,7 +58,33 @@ const SPINE_COLORS = [
 
 const MEMO_BG = ["#f5f0e6","#eef3f0","#eeedf5","#f5eeee","#eef3f5"];
 
-const SEED_DATA = [];  // 샘플 없이 빈 상태로 시작
+const SEED_DATA = [
+  { id:"s-b1", type:"book", title:"모순", author:"양귀자",
+    isbn:"9788937461033",
+    coverUrl:"https://covers.openlibrary.org/b/isbn/9788937461033-L.jpg",
+    finishedDate:"2026-05-10", date:"2026-05-10",
+    review:"생각보다 오래 남는 이야기",
+    quote:"",tags:["소설"] },
+  { id:"s-b2", type:"book", title:"채식주의자", author:"한강",
+    isbn:"9788936433598",
+    coverUrl:"https://covers.openlibrary.org/b/isbn/9788936433598-L.jpg",
+    finishedDate:"2026-03-15", date:"2026-03-15",
+    review:"오랫동안 머릿속을 맴돌았다.",
+    quote:"다시 펼치면 다른 나를 만나게 될 것 같다.",
+    tags:["소설","한강"] },
+  { id:"s-m1", type:"memory", title:"노을",
+    content:"오늘은 조금 평온했다",
+    imageUrl:"", date:"2026-06-05", tags:["일상"] },
+  { id:"s-m2", type:"memory", title:"요즘 자꾸 생각나는 것들",
+    content:"오래된 책방. 낡은 목재 선반. 커피 냄새. 비가 오는 날.",
+    imageUrl:"", date:"2026-06-03", tags:["단상"] },
+  { id:"s-m3", type:"memory", title:"전시 준비",
+    content:"생각보다 잘 될 것 같다",
+    imageUrl:"", date:"2026-06-03", tags:["타임클라우드"] },
+  { id:"s-m4", type:"memory", title:"모니터링단 아이디어",
+    content:"온라인 폼 + 알림톡 연계해보면 어떨까",
+    imageUrl:"", date:"2026-05-28", tags:["업무","아이디어"] },
+];
 
 // ── 유틸 ──────────────────────────────────────────────
 function seedN(str){ return str.split("").reduce((a,c)=>a+c.charCodeAt(0),0); }
