@@ -58,40 +58,7 @@ const SPINE_COLORS = [
 
 const MEMO_BG = ["#f5f0e6","#eef3f0","#eeedf5","#f5eeee","#eef3f5"];
 
-const SEED_DATA = [
-  { id:"b1", type:"book", title:"채식주의자", author:"한강",
-    isbn:"9788936433598",
-    coverUrl:"https://covers.openlibrary.org/b/isbn/9788936433598-L.jpg",
-    finishedDate:"2025-06-08", date:"2025-06-08",
-    review:"오랫동안 머릿속을 맴돌았다.",
-    quote:"다시 펼치면 다른 나를 만나게 될 것 같다.",
-    tags:["소설","한강"] },
-  { id:"b2", type:"book", title:"모순", author:"양귀자",
-    isbn:"9788937461033",
-    coverUrl:"https://covers.openlibrary.org/b/isbn/9788937461033-L.jpg",
-    finishedDate:"2026-05-10", date:"2026-05-10",
-    review:"생각보다 오래 남는 이야기", tags:["소설"] },
-  { id:"b3", type:"book", title:"작별하지 않는다", author:"한강",
-    isbn:"9788936434571",
-    coverUrl:"https://covers.openlibrary.org/b/isbn/9788936434571-L.jpg",
-    finishedDate:"2024-03-20", date:"2024-03-20",
-    review:"기억은 사랑의 다른 이름이다.", tags:["소설"] },
-  { id:"m1", type:"memory", title:"비 오는 퇴근길",
-    content:"오늘은 조금 마음이 편했다. 빗소리가 좋았어.",
-    imageUrl:"", date:"2025-06-08", tags:["일상","비"] },
-  { id:"m2", type:"memory", title:"요즘 자꾸 생각나는 것들",
-    content:"오래된 책방. 낡은 목재 선반. 커피 냄새.",
-    imageUrl:"", date:"2026-06-03", tags:["단상"] },
-  { id:"m3", type:"memory", title:"노을",
-    content:"오늘은 조금 평온했다",
-    imageUrl:"", date:"2026-06-05", tags:["일상"] },
-  { id:"m4", type:"memory", title:"전시 준비",
-    content:"생각보다 잘 될 것 같다",
-    imageUrl:"", date:"2026-06-03", tags:["타임클라우드"] },
-  { id:"m5", type:"memory", title:"모니터링단 아이디어",
-    content:"온라인 폼 + 알림톡 연계해보면 어떨까",
-    imageUrl:"", date:"2026-06-04", tags:["업무","아이디어"] },
-];
+const SEED_DATA = [];  // 샘플 없이 빈 상태로 시작
 
 // ── 유틸 ──────────────────────────────────────────────
 function seedN(str){ return str.split("").reduce((a,c)=>a+c.charCodeAt(0),0); }
@@ -428,6 +395,22 @@ function renderRecall(){
           <span class="month-badge">📝 메모 ${mc}개</span>
         </div>
         <p class="month-summary">${esc(summary)}</p>
+        ${recs.slice(0,3).map(r => {
+            const icon = r.type==="book" ? "📚" : r.imageUrl ? "📷" : "📝";
+            const desc = r.review || r.content || "";
+            return `<div data-id="${esc(r.id)}"
+              style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;
+              cursor:pointer;margin-top:4px;transition:background 150ms">
+              <span style="font-size:14px;flex-shrink:0">${icon}</span>
+              <div style="flex:1;min-width:0">
+                <p style="font-size:12px;font-weight:600;color:var(--ink);
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.title)}</p>
+                ${desc ? `<p style="font-size:11px;color:var(--muted);font-style:italic;
+                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  "${esc(desc.slice(0,30))}${desc.length>30?"…":""}"</p>` : ""}
+              </div>
+            </div>`;
+          }).join("")}
       </div>
     </div>`;
   });
@@ -435,7 +418,10 @@ function renderRecall(){
   views.recall.innerHTML = html;
 
   views.recall.querySelectorAll("[data-id]").forEach(el=>{
-    el.addEventListener("click", ()=>openDetail(el.dataset.id));
+    el.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      openDetail(el.dataset.id);
+    });
   });
 }
 
