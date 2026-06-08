@@ -326,11 +326,25 @@ img { display: block; }
   aspect-ratio: 1;
   border-radius: 3px;
   margin-bottom: 8px;
+  background: #fefefe;
+  background-image: repeating-linear-gradient(
+    transparent, transparent 18px,
+    rgba(106,173,207,0.2) 18px, rgba(106,173,207,0.2) 19px
+  );
+  padding: 10px 8px 6px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  background-image: repeating-linear-gradient(transparent, transparent 16px, rgba(100,80,40,0.1) 16px, rgba(100,80,40,0.1) 17px);
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.polaroid-memo-text {
+  font-family: var(--serif);
+  font-size: 11px;
+  color: rgba(46,35,24,0.75);
+  line-height: 19px;
+  word-break: keep-all;
+  overflow: hidden;
 }
 .polaroid-caption {
   font-family: var(--serif);

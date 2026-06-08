@@ -167,7 +167,26 @@ function renderHome(){
   });
   html += `</div>`;
 
+  html += `<div style="margin-top:32px;padding-top:16px;border-top:0.5px solid var(--line);text-align:center">
+    <button id="resetDataBtn" style="background:none;border:0.5px solid var(--line);border-radius:8px;
+      padding:8px 16px;font-size:11px;color:var(--muted);font-family:var(--sans);cursor:pointer">
+      샘플 데이터 초기화
+    </button>
+  </div>`;
+
   views.home.innerHTML = html;
+
+  const resetBtn = document.getElementById("resetDataBtn");
+  if(resetBtn){
+    resetBtn.addEventListener("click", ()=>{
+      if(confirm("모든 기록이 삭제되고 샘플 데이터로 초기화됩니다.\n계속할까요?")){
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(VERSION_KEY);
+        state.records = loadRecords();
+        renderView(state.tab);
+      }
+    });
+  }
 }
 
 // ── 서가 ─────────────────────────────────────────────
@@ -194,12 +213,7 @@ function renderShelf(){
       const h = 120 + (s%6)*14;
       html += `<button class="book-spine-btn" data-id="${esc(b.id)}" title="${esc(b.title)}">
         <div class="book-spine-inner" style="width:${w}px;height:${h}px">
-          ${b.coverUrl
-            ? `<img class="book-spine-img" src="${esc(b.coverUrl)}" alt="${esc(b.title)}"
-                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-               <div class="book-spine-text" style="display:none;background:linear-gradient(160deg,${c1},${c2})">${esc(b.title)}</div>`
-            : `<div class="book-spine-text" style="background:linear-gradient(160deg,${c1},${c2})">${esc(b.title)}</div>`
-          }
+          <div class="book-spine-text" style="background:linear-gradient(160deg,${c1},${c2})">${esc(b.title)}</div>
         </div>
       </button>`;
     });
@@ -234,14 +248,18 @@ function renderMemories(){
       const caption = m.content
         ? `"${esc(m.content.slice(0,18))}${m.content.length>18?"…":""}"`
         : esc(m.title);
+      const lines = (m.content || m.title || "").split(/(?<=.{14})/g).slice(0,6).join("\n");
       const photo = m.imageUrl
         ? `<img class="polaroid-photo" src="${esc(m.imageUrl)}" alt="${esc(m.title)}">`
-        : `<div class="polaroid-memo" style="background:${MEMO_BG[s%MEMO_BG.length]}">📝</div>`;
+        : `<div class="polaroid-memo">
+             <p class="polaroid-memo-text">${esc(m.content || m.title || "")}</p>
+           </div>`;
 
+      const showCaption = !!m.imageUrl;
       html += `<button class="polaroid" data-id="${esc(m.id)}"
         style="transform:rotate(${rot}deg)">
         ${tape}${photo}
-        <p class="polaroid-caption">${caption}</p>
+        ${showCaption ? `<p class="polaroid-caption">${caption}</p>` : ""}
         <p class="polaroid-date">${m.date.slice(5).replace("-",".")}</p>
       </button>`;
     });
