@@ -304,9 +304,12 @@ function renderShelf(){
       </div>
       <div class="shelf-frame">
         <div class="shelf-rail">
-          ${!ybooks.length ? `<div style="width:100%;padding:20px 0;text-align:center;font-size:12px;color:var(--muted);font-style:italic">
-            + 버튼을 눌러 첫 책을 담아보세요
-          </div>` : ""}`;
+          ${!ybooks.length ? `<button id="emptyShelfBtn"
+            style="width:100%;padding:20px 0;text-align:center;font-size:12px;
+            color:var(--muted);font-style:italic;background:none;border:none;
+            cursor:pointer;font-family:var(--sans)">
+            + 탭해서 첫 책을 담아보세요
+          </button>` : ""}`;
 
     ybooks.forEach(b=>{
       const s = seedN(b.id);
@@ -326,6 +329,13 @@ function renderShelf(){
   views.shelf.innerHTML = html;
   views.shelf.querySelectorAll(".book-spine-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>openDetail(btn.dataset.id));
+  });
+
+  const emptyShelfBtn = document.getElementById("emptyShelfBtn");
+  if(emptyShelfBtn) emptyShelfBtn.addEventListener("click", ()=>{
+    openAddSheet();
+    // 바텀시트 열리면 바로 책 담기로
+    setTimeout(()=>{ const pickBook = document.getElementById("pickBook"); if(pickBook) pickBook.click(); }, 100);
   });
 }
 
