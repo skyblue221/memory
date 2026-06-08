@@ -140,7 +140,7 @@ function renderHome(){
     const yago = now.getFullYear() - +featured.date.slice(0,4);
     const label = yago > 0 ? `${yago}년 전 오늘` : "최근의 기억";
     const desc = featured.review || featured.content || "";
-    html += `<div class="today-card">
+    html += `<div class="today-card" data-id="${esc(featured.id)}" style="cursor:pointer">
       <p class="today-label">${esc(label)}</p>
       <p class="today-title">${esc(featured.title)}</p>
       ${desc ? `<p class="today-desc">"${esc(desc)}"</p>` : ""}
@@ -167,14 +167,23 @@ function renderHome(){
   });
   html += `</div>`;
 
-  html += `<div style="margin-top:32px;padding-top:16px;border-top:0.5px solid var(--line);text-align:center">
+  html += `<div style="margin-top:32px;padding-top:16px;border-top:0.5px solid var(--line);text-align:center;display:flex;gap:8px;justify-content:center">
     <button id="resetDataBtn" style="background:none;border:0.5px solid var(--line);border-radius:8px;
       padding:8px 16px;font-size:11px;color:var(--muted);font-family:var(--sans);cursor:pointer">
-      샘플 데이터 초기화
+      샘플 데이터로 초기화
+    </button>
+    <button id="clearDataBtn" style="background:none;border:0.5px solid rgba(200,80,80,0.3);border-radius:8px;
+      padding:8px 16px;font-size:11px;color:rgba(180,60,60,0.7);font-family:var(--sans);cursor:pointer">
+      전체 삭제
     </button>
   </div>`;
 
   views.home.innerHTML = html;
+
+  // 클릭 이벤트 — 오늘의 기억, 최근 기록
+  views.home.querySelectorAll("[data-id]").forEach(el=>{
+    el.addEventListener("click", ()=>openDetail(el.dataset.id));
+  });
 
   const resetBtn = document.getElementById("resetDataBtn");
   if(resetBtn){
@@ -183,6 +192,18 @@ function renderHome(){
         localStorage.removeItem(STORAGE_KEY);
         localStorage.removeItem(VERSION_KEY);
         state.records = loadRecords();
+        renderView(state.tab);
+      }
+    });
+  }
+
+  const clearBtn = document.getElementById("clearDataBtn");
+  if(clearBtn){
+    clearBtn.addEventListener("click", ()=>{
+      if(confirm("모든 기록이 완전히 삭제됩니다.\n되돌릴 수 없어요. 계속할까요?")){
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.setItem(VERSION_KEY, DATA_VERSION);
+        state.records = [];
         renderView(state.tab);
       }
     });
@@ -292,7 +313,7 @@ function renderRecall(){
       const yago = yr - +r.date.slice(0,4);
       const icon = r.type==="book" ? "📚" : "📷";
       const desc = r.review || r.content || "";
-      html += `<div class="recall-today-item">
+      html += `<div class="recall-today-item" data-id="${esc(r.id)}" style="cursor:pointer">
         <span class="recall-badge">${yago}년 전</span>
         <div>
           <p class="recall-title">${icon} ${esc(r.title)}</p>
@@ -338,6 +359,10 @@ function renderRecall(){
   });
 
   views.recall.innerHTML = html;
+
+  views.recall.querySelectorAll("[data-id]").forEach(el=>{
+    el.addEventListener("click", ()=>openDetail(el.dataset.id));
+  });
 }
 
 // ── 상세 오버레이 ──────────────────────────────────────
