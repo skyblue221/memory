@@ -212,7 +212,11 @@ function renderHome(){
       ${desc ? `<p class="today-desc">"${esc(desc)}"</p>` : ""}
     </div>`;
   } else {
-    html += `<div class="today-card"><p class="today-desc">첫 기억을 남겨볼까요?</p></div>`;
+    html += `<div class="today-card" id="emptyTodayCard" style="cursor:pointer;text-align:center">
+      <p style="font-size:24px;margin-bottom:8px">📝</p>
+      <p class="today-title" style="font-size:15px">첫 기억을 남겨볼까요?</p>
+      <p class="today-desc" style="margin-top:4px">탭해서 기록 시작하기</p>
+    </div>`;
   }
 
   // 최근 기록
@@ -251,6 +255,10 @@ function renderHome(){
     el.addEventListener("click", ()=>openDetail(el.dataset.id));
   });
 
+  // 빈 상태 카드 — 누르면 기록 추가 시트
+  const emptyCard = document.getElementById("emptyTodayCard");
+  if(emptyCard) emptyCard.addEventListener("click", openAddSheet);
+
   const resetBtn = document.getElementById("resetDataBtn");
   if(resetBtn){
     resetBtn.addEventListener("click", ()=>{
@@ -280,19 +288,25 @@ function renderHome(){
 // ── 서가 ─────────────────────────────────────────────
 function renderShelf(){
   const books = state.records.filter(r=>r.type==="book");
-  if(!books.length){ views.shelf.innerHTML = `<p class="empty-state">아직 읽은 책이 없어요.</p>`; return; }
-
+  const thisYear = String(new Date().getFullYear());
   const byYear = groupBy(books, b=>(b.finishedDate||b.date).slice(0,4));
+
+  // 올해 서가가 없으면 빈 선반으로 추가
+  if(!byYear[thisYear]) byYear[thisYear] = [];
+
   let html = `<p class="section-eyebrow">나의 서가</p>`;
 
   Object.entries(byYear).sort(([a],[b])=>+b-+a).forEach(([year, ybooks])=>{
     html += `<div class="shelf-year">
       <div class="shelf-year-label">
         <span class="shelf-year-title">${esc(year)}년</span>
-        <span class="shelf-year-count">${ybooks.length}권</span>
+        <span class="shelf-year-count">${ybooks.length ? ybooks.length+"권" : "아직 비어있어요"}</span>
       </div>
       <div class="shelf-frame">
-        <div class="shelf-rail">`;
+        <div class="shelf-rail">
+          ${!ybooks.length ? `<div style="width:100%;padding:20px 0;text-align:center;font-size:12px;color:var(--muted);font-style:italic">
+            + 버튼을 눌러 첫 책을 담아보세요
+          </div>` : ""}`;
 
     ybooks.forEach(b=>{
       const s = seedN(b.id);
