@@ -23,16 +23,19 @@ const supa = {
     }));
   },
   async upsert(record) {
+    // base64 이미지는 Supabase 저장 크기 초과할 수 있어서 1MB 이상이면 스킵
+    const imageUrl = record.imageUrl && record.imageUrl.length < 1000000 ? record.imageUrl : null;
+    const coverUrl = record.coverUrl && record.coverUrl.length < 1000000 ? record.coverUrl : null;
     const row = {
       id: record.id, type: record.type, title: record.title,
       author: record.author || null, isbn: record.isbn || null,
-      cover_url: record.coverUrl || null, content: record.content || null,
-      image_url: record.imageUrl || null, review: record.review || null,
+      cover_url: coverUrl, content: record.content || null,
+      image_url: imageUrl, review: record.review || null,
       quote: record.quote || null, finished_date: record.finishedDate || null,
       date: record.date, tags: record.tags || [],
       created_at: record.createdAt || new Date().toISOString(),
     };
-    await fetch(`${SUPA_URL}/rest/v1/records`, {
+    const res = await fetch(`${SUPA_URL}/rest/v1/records`, {
       method: "POST",
       headers: {
         apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`,
@@ -41,6 +44,7 @@ const supa = {
       },
       body: JSON.stringify(row),
     });
+    if(!res.ok) console.warn("Supabase 저장 실패", await res.text());
   },
   async deleteAll() {
     await fetch(`${SUPA_URL}/rest/v1/records?id=neq.none`, {
@@ -124,18 +128,21 @@ function saveRecords(records){
 async function syncFromSupabase(){
   try {
     const rows = await supa.getAll();
-    if (rows && rows.length > 0) {
+    if (rows === null) {
+      console.warn("Supabase 응답 없음, localStorage 사용");
+      return;
+    }
+    if (rows.length > 0) {
       state.records = rows;
       saveRecords(rows);
-      renderView(state.tab);
-    } else if (rows && rows.length === 0) {
-      // Supabase 비어있으면 localStorage도 비우기
+    } else {
+      // Supabase 비어있으면 localStorage 샘플도 비우기
       state.records = [];
       saveRecords([]);
-      renderView(state.tab);
     }
-  } catch(_){
-    console.warn("Supabase 연결 실패, localStorage 사용");
+    renderView(state.tab);
+  } catch(e){
+    console.warn("Supabase 연결 실패, localStorage 사용", e);
   }
 }
 
@@ -227,7 +234,7 @@ function renderHome(){
     const thumbContent = r.type==="book" && r.coverUrl
       ? `<img src="${esc(r.coverUrl)}" alt="" onerror="this.style.display='none'">`
       : r.type==="book" ? "📚" : r.imageUrl ? `<img src="${esc(r.imageUrl)}" alt="">` : "📝";
-    html += `<div class="recent-item">
+    html += `<div class="recent-item" data-id="${esc(r.id)}" style="cursor:pointer">
       <div class="recent-thumb" style="background:linear-gradient(160deg,${c1},${c2})">${thumbContent}</div>
       <div style="flex:1;min-width:0">
         <p class="recent-title">${esc(r.title)}</p>
