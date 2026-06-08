@@ -183,6 +183,7 @@ function setTab(tab){
   navBtns.forEach(btn=>{
     btn.classList.toggle("active", btn.dataset.tab === tab);
   });
+  updateHeaderDate();
   renderView(tab);
 }
 
@@ -490,6 +491,17 @@ function openDetail(id){
   const s = seedN(r.id);
   const [c1,c2] = SPINE_COLORS[s % SPINE_COLORS.length];
 
+  // 공통 하단 버튼 (수정 + 삭제)
+  const actionBtns = `
+    <div style="display:flex;gap:8px;margin-top:12px;padding-top:12px;border-top:0.5px dashed var(--line)">
+      <button id="detailEditBtn" style="flex:1;padding:9px;border-radius:10px;border:0.5px solid var(--line);
+        background:var(--sky-light);color:var(--sky-dark);font-size:13px;font-weight:600;
+        font-family:var(--sans);cursor:pointer">✏️ 수정</button>
+      <button id="detailDeleteBtn" style="flex:1;padding:9px;border-radius:10px;border:0.5px solid rgba(200,80,80,0.25);
+        background:rgba(255,240,240,0.8);color:rgba(180,60,60,0.8);font-size:13px;font-weight:600;
+        font-family:var(--sans);cursor:pointer">🗑 삭제</button>
+    </div>`;
+
   let html = "";
   if(r.type==="book"){
     html = `<div class="detail-book-grid">
@@ -514,6 +526,7 @@ function openDetail(id){
           <div><p class="detail-section-label">기억나는 문장</p>
           <p class="detail-quote" style="border-left:2px solid ${c1}">${esc(r.quote)}</p></div>` : ""}
         ${tagsHtml(r.tags)}
+        ${actionBtns}
       </div>
     </div>`;
   } else {
@@ -526,12 +539,119 @@ function openDetail(id){
       <p class="detail-memory-title">${esc(r.title)}</p>
       ${r.content ? `<p class="detail-memory-content">"${esc(r.content)}"</p>` : ""}
       ${tagsHtml(r.tags)}
+      ${actionBtns}
     </div>`;
   }
 
   detailModal.innerHTML = html;
   detailOverlay.classList.remove("hidden");
+
   document.getElementById("detailCloseBtn").addEventListener("click", closeDetail);
+
+  document.getElementById("detailDeleteBtn").addEventListener("click", async ()=>{
+    if(!confirm("이 기록을 삭제할까요?")) return;
+    state.records = state.records.filter(x=>x.id!==id);
+    saveRecords(state.records);
+    try {
+      await fetch(`${SUPA_URL}/rest/v1/records?id=eq.${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` }
+      });
+    } catch(_){}
+    closeDetail();
+    renderView(state.tab);
+  });
+
+  document.getElementById("detailEditBtn").addEventListener("click", ()=>{
+    closeDetail();
+    openEditSheet(id);
+  });
+}
+
+function openEditSheet(id){
+  const r = state.records.find(x=>x.id===id);
+  if(!r) return;
+
+  if(r.type==="book"){
+    openAddSheet();
+    setTimeout(()=>{
+      const pickBook = document.getElementById("pickBook");
+      if(pickBook) pickBook.click();
+      setTimeout(()=>{
+        if($("titleInput")) $("titleInput").value = r.title || "";
+        if($("authorInput")) $("authorInput").value = r.author || "";
+        if($("isbnInput")) $("isbnInput").value = r.isbn || "";
+        if($("reviewInput")) $("reviewInput").value = r.review || "";
+        if($("quoteInput")) $("quoteInput").value = r.quote || "";
+        if($("dateInput")) $("dateInput").value = r.finishedDate || r.date || today();
+        if($("coverUrlInput")) $("coverUrlInput").value = r.coverUrl || "";
+        if(r.coverUrl){
+          $("coverPreviewImg").src = r.coverUrl;
+          $("coverPreview").style.display = "flex";
+        }
+        // 저장 버튼 누르면 기존 기록 업데이트
+        const submitBtn = $("bookSubmitBtn");
+        if(submitBtn){
+          submitBtn.textContent = "수정 완료";
+          submitBtn.replaceWith(submitBtn.cloneNode(true));
+          $("bookSubmitBtn").addEventListener("click", async ()=>{
+            const updated = {
+              ...r,
+              title: $("titleInput").value.trim(),
+              author: $("authorInput").value.trim(),
+              isbn: $("isbnInput").value.replaceAll("-","").trim(),
+              review: $("reviewInput").value.trim(),
+              quote: $("quoteInput").value.trim(),
+              finishedDate: $("dateInput").value || today(),
+              date: $("dateInput").value || today(),
+              coverUrl: $("coverUrlInput").value.trim(),
+            };
+            state.records = state.records.map(x=>x.id===id ? updated : x);
+            saveRecords(state.records);
+            try { await supa.upsert(updated); } catch(_){}
+            closeSheet();
+            renderView(state.tab);
+          });
+        }
+      }, 150);
+    }, 100);
+  } else {
+    openAddSheet();
+    setTimeout(()=>{
+      const pickMemory = document.getElementById("pickMemory");
+      if(pickMemory) pickMemory.click();
+      setTimeout(()=>{
+        if($("memTitleInput")) $("memTitleInput").value = r.title || "";
+        if($("memContentInput")) $("memContentInput").value = r.content || "";
+        if($("memTagsInput")) $("memTagsInput").value = (r.tags||[]).join(", ");
+        if($("memDateInput")) $("memDateInput").value = r.date || today();
+        if(r.imageUrl){
+          $("memPhotoPreviewImg").src = r.imageUrl;
+          $("memPhotoPreview").style.display = "block";
+        }
+        const submitBtn = $("memSubmitBtn");
+        if(submitBtn){
+          submitBtn.textContent = "수정 완료";
+          submitBtn.replaceWith(submitBtn.cloneNode(true));
+          $("memSubmitBtn").addEventListener("click", async ()=>{
+            const updated = {
+              ...r,
+              title: $("memTitleInput").value.trim(),
+              content: $("memContentInput").value.trim(),
+              tags: $("memTagsInput").value.split(",").map(t=>t.trim()).filter(Boolean),
+              date: $("memDateInput").value || today(),
+              imageUrl: $("memPhotoPreview").style.display!=="none" ? $("memPhotoPreviewImg").src : "",
+            };
+            state.records = state.records.map(x=>x.id===id ? updated : x);
+            saveRecords(state.records);
+            try { await supa.upsert(updated); } catch(_){}
+            closeSheet();
+            renderView(state.tab);
+          });
+        }
+      }, 150);
+    }, 100);
+  }
 }
 
 function closeDetail(){
@@ -763,26 +883,37 @@ navBtns.forEach(btn=>{
 });
 $("addBtn").addEventListener("click", openAddSheet);
 
-// ── 헤더 날짜 + 사이드바 브랜드 ─────────────────────────
-(function(){
+// ── 헤더 날짜 ─────────────────────────────────────────
+function updateHeaderDate(){
   const now = new Date();
   const dateStr = `${now.getMonth()+1}월 ${now.getDate()}일 · 나의 작은 아카이브`;
   $("headerDate").textContent = dateStr;
+  const navDate = $("navDate");
+  if(navDate) navDate.textContent = dateStr;
+}
 
-  // 태블릿/데스크탑: 사이드바에 날짜 서브텍스트 추가
+(function(){
+  // 사이드바 날짜 요소 생성
   const navDateEl = document.createElement("p");
   navDateEl.id = "navDate";
-  navDateEl.textContent = dateStr;
   navDateEl.style.cssText = "font-size:11px;color:var(--muted);padding:0 12px 12px;display:none;";
   const nav = $("appNav");
   nav.insertBefore(navDateEl, nav.firstChild);
 
-  // 768px 이상에서만 보이게
   function checkWidth(){
     navDateEl.style.display = window.innerWidth >= 768 ? "block" : "none";
   }
   checkWidth();
   window.addEventListener("resize", checkWidth);
+
+  // 자정마다 날짜 자동 갱신
+  function scheduleNextDay(){
+    const now = new Date();
+    const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1) - now;
+    setTimeout(()=>{ updateHeaderDate(); scheduleNextDay(); }, msToMidnight);
+  }
+  updateHeaderDate();
+  scheduleNextDay();
 })();
 
 // ── 서비스 워커 ───────────────────────────────────────
