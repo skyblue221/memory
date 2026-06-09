@@ -98,6 +98,18 @@ function fmt(iso){
   const [y,m,d] = iso.split("-");
   return `${y}년 ${+m}월 ${+d}일`;
 }
+function showToast(msg){
+  const t = document.createElement("div");
+  t.textContent = msg;
+  t.style.cssText = `position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:#fff;padding:10px 20px;border-radius:99px;
+    font-size:13px;font-weight:500;z-index:999;opacity:0;transition:opacity 250ms;
+    white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.2);`;
+  document.body.appendChild(t);
+  requestAnimationFrame(()=>{ t.style.opacity="1"; });
+  setTimeout(()=>{ t.style.opacity="0"; setTimeout(()=>t.remove(), 300); }, 2000);
+}
+
 function esc(str){
   return String(str||"")
     .replace(/&/g,"&amp;").replace(/</g,"&lt;")
@@ -305,6 +317,8 @@ function renderShelf(){
   let html = `<p class="section-eyebrow">나의 서가</p>`;
 
   Object.entries(byYear).sort(([a],[b])=>+b-+a).forEach(([year, ybooks])=>{
+    // 책 순서: 오래된 것(왼쪽) → 최신(오른쪽)
+    ybooks = [...ybooks].sort((a,b)=>(a.finishedDate||a.date).localeCompare(b.finishedDate||b.date));
     html += `<div class="shelf-year">
       <div class="shelf-year-label">
         <span class="shelf-year-title">${esc(year)}년</span>
@@ -573,84 +587,11 @@ function openEditSheet(id){
   if(!r) return;
 
   if(r.type==="book"){
-    openAddSheet();
-    setTimeout(()=>{
-      const pickBook = document.getElementById("pickBook");
-      if(pickBook) pickBook.click();
-      setTimeout(()=>{
-        if($("titleInput")) $("titleInput").value = r.title || "";
-        if($("authorInput")) $("authorInput").value = r.author || "";
-        if($("isbnInput")) $("isbnInput").value = r.isbn || "";
-        if($("reviewInput")) $("reviewInput").value = r.review || "";
-        if($("quoteInput")) $("quoteInput").value = r.quote || "";
-        if($("dateInput")) $("dateInput").value = r.finishedDate || r.date || today();
-        if($("coverUrlInput")) $("coverUrlInput").value = r.coverUrl || "";
-        if(r.coverUrl){
-          $("coverPreviewImg").src = r.coverUrl;
-          $("coverPreview").style.display = "flex";
-        }
-        // 저장 버튼 누르면 기존 기록 업데이트
-        const submitBtn = $("bookSubmitBtn");
-        if(submitBtn){
-          submitBtn.textContent = "수정 완료";
-          submitBtn.replaceWith(submitBtn.cloneNode(true));
-          $("bookSubmitBtn").addEventListener("click", async ()=>{
-            const updated = {
-              ...r,
-              title: $("titleInput").value.trim(),
-              author: $("authorInput").value.trim(),
-              isbn: $("isbnInput").value.replaceAll("-","").trim(),
-              review: $("reviewInput").value.trim(),
-              quote: $("quoteInput").value.trim(),
-              finishedDate: $("dateInput").value || today(),
-              date: $("dateInput").value || today(),
-              coverUrl: $("coverUrlInput").value.trim(),
-            };
-            state.records = state.records.map(x=>x.id===id ? updated : x);
-            saveRecords(state.records);
-            try { await supa.upsert(updated); } catch(_){}
-            closeSheet();
-            renderView(state.tab);
-          });
-        }
-      }, 150);
-    }, 100);
+    renderBookForm(id, r);
+    showBottomSheet();
   } else {
-    openAddSheet();
-    setTimeout(()=>{
-      const pickMemory = document.getElementById("pickMemory");
-      if(pickMemory) pickMemory.click();
-      setTimeout(()=>{
-        if($("memTitleInput")) $("memTitleInput").value = r.title || "";
-        if($("memContentInput")) $("memContentInput").value = r.content || "";
-        if($("memTagsInput")) $("memTagsInput").value = (r.tags||[]).join(", ");
-        if($("memDateInput")) $("memDateInput").value = r.date || today();
-        if(r.imageUrl){
-          $("memPhotoPreviewImg").src = r.imageUrl;
-          $("memPhotoPreview").style.display = "block";
-        }
-        const submitBtn = $("memSubmitBtn");
-        if(submitBtn){
-          submitBtn.textContent = "수정 완료";
-          submitBtn.replaceWith(submitBtn.cloneNode(true));
-          $("memSubmitBtn").addEventListener("click", async ()=>{
-            const updated = {
-              ...r,
-              title: $("memTitleInput").value.trim(),
-              content: $("memContentInput").value.trim(),
-              tags: $("memTagsInput").value.split(",").map(t=>t.trim()).filter(Boolean),
-              date: $("memDateInput").value || today(),
-              imageUrl: $("memPhotoPreview").style.display!=="none" ? $("memPhotoPreviewImg").src : "",
-            };
-            state.records = state.records.map(x=>x.id===id ? updated : x);
-            saveRecords(state.records);
-            try { await supa.upsert(updated); } catch(_){}
-            closeSheet();
-            renderView(state.tab);
-          });
-        }
-      }, 150);
-    }, 100);
+    renderMemoryForm(id, r);
+    showBottomSheet();
   }
 }
 
@@ -665,6 +606,7 @@ function openAddSheet(){
   sheetOverlay.classList.remove("hidden");
 }
 function closeSheet(){
+  stopBarcodeScanner();
   sheetOverlay.classList.add("hidden");
 }
 sheetOverlay.addEventListener("click", e=>{ if(e.target===sheetOverlay) closeSheet(); });
@@ -699,7 +641,7 @@ function textarea(placeholder, name, rows=3){
   return `<textarea class="form-textarea" name="${name}" placeholder="${esc(placeholder)}" rows="${rows}" style="margin-bottom:10px"></textarea>`;
 }
 
-function renderBookForm(){
+function renderBookForm(editId=null, editRecord=null){
   sheetContent.innerHTML = `
     <div class="sheet-header">
       <button class="sheet-back-btn" id="sheetBackBtn">← 뒤로</button>
@@ -708,7 +650,13 @@ function renderBookForm(){
     <p class="sheet-title">📚 책 담기</p>
     <div class="isbn-row">
       <input class="form-input isbn-input" id="isbnInput" name="isbn" placeholder="ISBN (예: 9788936433598)" inputmode="numeric" style="margin-bottom:0;font-size:14px">
+      <button class="isbn-btn" id="isbnScanBtn" title="카메라로 바코드 스캔" style="background:var(--sky-light);color:var(--sky-dark);border:0.5px solid rgba(106,173,207,0.35)">📷</button>
       <button class="isbn-btn" id="isbnBtn">찾기</button>
+    </div>
+    <div id="scannerWrap" style="display:none;margin-bottom:10px;border-radius:10px;overflow:hidden;position:relative">
+      <video id="scannerVideo" style="width:100%;height:180px;object-fit:cover;display:block"></video>
+      <p style="position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:11px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.5)">책 바코드에 카메라를 맞춰주세요</p>
+      <button id="scannerCloseBtn" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.4);color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:14px;cursor:pointer">✕</button>
     </div>
     <div id="coverPreview" class="cover-preview" style="display:none">
       <img id="coverPreviewImg" src="" alt="표지" onerror="this.parentElement.style.display='none'">
@@ -731,16 +679,111 @@ function renderBookForm(){
     <input class="form-input" type="date" id="dateInput" value="${today()}" style="margin-bottom:16px">
     <button class="submit-btn" id="bookSubmitBtn">담아두기</button>`;
 
-  $("sheetBackBtn").addEventListener("click", renderPickStep);
+  $("sheetBackBtn").addEventListener("click", editId ? closeSheet : renderPickStep);
   $("sheetCloseBtn").addEventListener("click", closeSheet);
   $("isbnBtn").addEventListener("click", lookupIsbn);
+  $("isbnScanBtn").addEventListener("click", startBarcodeScanner);
   $("coverFileInput").addEventListener("change", handleCoverFile);
   $("coverUrlInput").addEventListener("input", e=>{
     const url = e.target.value.trim();
     if(url){ $("coverPreviewImg").src=url; $("coverPreview").style.display="flex"; }
     else $("coverPreview").style.display="none";
   });
-  $("bookSubmitBtn").addEventListener("click", saveBook);
+
+  // 수정 모드면 기존 값 채우기
+  if(editId && editRecord){
+    $("titleInput").value = editRecord.title || "";
+    $("authorInput").value = editRecord.author || "";
+    $("isbnInput").value = editRecord.isbn || "";
+    $("reviewInput").value = editRecord.review || "";
+    $("quoteInput").value = editRecord.quote || "";
+    $("dateInput").value = editRecord.finishedDate || editRecord.date || today();
+    $("coverUrlInput").value = editRecord.coverUrl || "";
+    if(editRecord.coverUrl){
+      $("coverPreviewImg").src = editRecord.coverUrl;
+      $("coverPreview").style.display = "flex";
+    }
+    $("bookSubmitBtn").textContent = "수정 완료";
+    $("bookSubmitBtn").addEventListener("click", ()=>updateBook(editId));
+  } else {
+    $("bookSubmitBtn").addEventListener("click", saveBook);
+  }
+}
+
+async function updateBook(id){
+  const title = $("titleInput").value.trim();
+  if(!title){ alert("제목을 입력해주세요."); return; }
+  const r = state.records.find(x=>x.id===id);
+  const updated = {
+    ...r,
+    title,
+    author: $("authorInput").value.trim(),
+    isbn: $("isbnInput").value.replaceAll("-","").trim(),
+    review: $("reviewInput").value.trim(),
+    quote: $("quoteInput").value.trim(),
+    finishedDate: $("dateInput").value || today(),
+    date: $("dateInput").value || today(),
+    coverUrl: $("coverUrlInput").value.trim(),
+  };
+  state.records = state.records.map(x=>x.id===id ? updated : x);
+  saveRecords(state.records);
+  try { await supa.upsert(updated); } catch(_){}
+  closeSheet();
+  showToast("수정됐어요!");
+  renderView(state.tab);
+}
+
+// 바코드 스캐너
+let scannerStream = null;
+
+async function startBarcodeScanner(){
+  const wrap = $("scannerWrap");
+  const video = $("scannerVideo");
+  if(!wrap || !video) return;
+
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" }
+    });
+    video.srcObject = scannerStream;
+    video.play();
+    wrap.style.display = "block";
+
+    $("scannerCloseBtn").addEventListener("click", stopBarcodeScanner);
+
+    // BarcodeDetector API 지원 여부 확인
+    if(!("BarcodeDetector" in window)){
+      alert("이 브라우저는 바코드 스캔을 지원하지 않아요.\nISBN을 직접 입력해주세요.");
+      stopBarcodeScanner();
+      return;
+    }
+
+    const detector = new BarcodeDetector({ formats: ["ean_13","ean_8"] });
+    const scan = setInterval(async ()=>{
+      if(!scannerStream) { clearInterval(scan); return; }
+      try {
+        const barcodes = await detector.detect(video);
+        if(barcodes.length > 0){
+          const code = barcodes[0].rawValue;
+          clearInterval(scan);
+          stopBarcodeScanner();
+          $("isbnInput").value = code;
+          lookupIsbn();
+        }
+      } catch(_){}
+    }, 500);
+  } catch(_){
+    alert("카메라 접근이 거부됐어요.\n브라우저 설정에서 카메라를 허용해주세요.");
+  }
+}
+
+function stopBarcodeScanner(){
+  if(scannerStream){
+    scannerStream.getTracks().forEach(t=>t.stop());
+    scannerStream = null;
+  }
+  const wrap = $("scannerWrap");
+  if(wrap) wrap.style.display = "none";
 }
 
 async function lookupIsbn(){
@@ -809,10 +852,11 @@ function saveBook(){
   };
   addRecord(record);
   closeSheet();
+  showToast("책을 담았어요! 📚");
   setTab("shelf");
 }
 
-function renderMemoryForm(){
+function renderMemoryForm(editId=null, editRecord=null){
   sheetContent.innerHTML = `
     <div class="sheet-header">
       <button class="sheet-back-btn" id="sheetBackBtn">← 뒤로</button>
@@ -834,7 +878,7 @@ function renderMemoryForm(){
     <input class="form-input" type="date" id="memDateInput" value="${today()}" style="margin-bottom:16px">
     <button class="submit-btn" id="memSubmitBtn">담아두기</button>`;
 
-  $("sheetBackBtn").addEventListener("click", renderPickStep);
+  $("sheetBackBtn").addEventListener("click", editId ? closeSheet : renderPickStep);
   $("sheetCloseBtn").addEventListener("click", closeSheet);
   $("memPhotoInput").addEventListener("change", e=>{
     const file = e.target.files[0];
@@ -846,7 +890,43 @@ function renderMemoryForm(){
     };
     reader.readAsDataURL(file);
   });
-  $("memSubmitBtn").addEventListener("click", saveMemory);
+
+  // 수정 모드면 기존 값 채우기
+  if(editId && editRecord){
+    $("memTitleInput").value = editRecord.title || "";
+    $("memContentInput").value = editRecord.content || "";
+    $("memTagsInput").value = (editRecord.tags||[]).join(", ");
+    $("memDateInput").value = editRecord.date || today();
+    if(editRecord.imageUrl){
+      $("memPhotoPreviewImg").src = editRecord.imageUrl;
+      $("memPhotoPreview").style.display = "block";
+    }
+    $("memSubmitBtn").textContent = "수정 완료";
+    $("memSubmitBtn").addEventListener("click", ()=>updateMemory(editId));
+  } else {
+    $("memSubmitBtn").addEventListener("click", saveMemory);
+  }
+}
+
+async function updateMemory(id){
+  const content = $("memContentInput").value.trim();
+  const title = $("memTitleInput").value.trim();
+  if(!title && !content){ alert("제목이나 메모를 입력해주세요."); return; }
+  const r = state.records.find(x=>x.id===id);
+  const updated = {
+    ...r,
+    title: title || content.slice(0,20) || "기억",
+    content,
+    tags: $("memTagsInput").value.split(",").map(t=>t.trim()).filter(Boolean),
+    date: $("memDateInput").value || today(),
+    imageUrl: $("memPhotoPreview").style.display!=="none" ? $("memPhotoPreviewImg").src : "",
+  };
+  state.records = state.records.map(x=>x.id===id ? updated : x);
+  saveRecords(state.records);
+  try { await supa.upsert(updated); } catch(_){}
+  closeSheet();
+  showToast("수정됐어요!");
+  renderView(state.tab);
 }
 
 function saveMemory(){
@@ -869,6 +949,7 @@ function saveMemory(){
   };
   addRecord(record);
   closeSheet();
+  showToast("기억을 담았어요! 📷");
   setTab("memories");
 }
 
