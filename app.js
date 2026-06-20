@@ -560,9 +560,13 @@ function openDetail(id){
   detailModal.innerHTML = html;
   detailOverlay.classList.remove("hidden");
 
-  document.getElementById("detailCloseBtn").addEventListener("click", closeDetail);
+  document.getElementById("detailCloseBtn").addEventListener("click", e=>{
+    e.stopPropagation();
+    closeDetail();
+  });
 
-  document.getElementById("detailDeleteBtn").addEventListener("click", async ()=>{
+  document.getElementById("detailDeleteBtn").addEventListener("click", async e=>{
+    e.stopPropagation();
     if(!confirm("이 기록을 삭제할까요?")) return;
     state.records = state.records.filter(x=>x.id!==id);
     saveRecords(state.records);
@@ -576,22 +580,30 @@ function openDetail(id){
     renderView(state.tab);
   });
 
-  document.getElementById("detailEditBtn").addEventListener("click", ()=>{
-    closeDetail();
-    openEditSheet(id);
+  document.getElementById("detailEditBtn").addEventListener("click", e=>{
+    e.preventDefault();
+    e.stopPropagation();
+    if(openEditSheet(id)) closeDetail();
   });
 }
 
 function openEditSheet(id){
   const r = state.records.find(x=>x.id===id);
-  if(!r) return;
+  if(!r) return false;
 
-  if(r.type==="book"){
-    renderBookForm(id, r);
+  try {
     showBottomSheet();
-  } else {
-    renderMemoryForm(id, r);
-    showBottomSheet();
+    if(r.type==="book"){
+      renderBookForm(id, r);
+    } else {
+      renderMemoryForm(id, r);
+    }
+    return true;
+  } catch(err) {
+    console.error("edit sheet failed", err);
+    closeSheet();
+    alert("수정 화면을 여는 중 문제가 생겼어요. 새로고침 후 다시 시도해주세요.");
+    return false;
   }
 }
 
@@ -599,11 +611,15 @@ function closeDetail(){
   detailOverlay.classList.add("hidden");
 }
 detailOverlay.addEventListener("click", e=>{ if(e.target===detailOverlay) closeDetail(); });
+detailModal.addEventListener("click", e=>e.stopPropagation());
 
 // ── 바텀 시트 ─────────────────────────────────────────
+function showBottomSheet(){
+  sheetOverlay.classList.remove("hidden");
+}
 function openAddSheet(){
   renderPickStep();
-  sheetOverlay.classList.remove("hidden");
+  showBottomSheet();
 }
 function closeSheet(){
   stopBarcodeScanner();
@@ -913,13 +929,17 @@ async function updateMemory(id){
   const title = $("memTitleInput").value.trim();
   if(!title && !content){ alert("제목이나 메모를 입력해주세요."); return; }
   const r = state.records.find(x=>x.id===id);
+  const preview = $("memPhotoPreview");
+  const previewImg = $("memPhotoPreviewImg");
+  const previewSrc = previewImg?.getAttribute("src") || previewImg?.src || "";
+  const imageUrl = preview?.style.display!=="none" && previewSrc ? previewImg.src : (r?.imageUrl || "");
   const updated = {
     ...r,
     title: title || content.slice(0,20) || "기억",
     content,
     tags: $("memTagsInput").value.split(",").map(t=>t.trim()).filter(Boolean),
     date: $("memDateInput").value || today(),
-    imageUrl: $("memPhotoPreview").style.display!=="none" ? $("memPhotoPreviewImg").src : "",
+    imageUrl,
   };
   state.records = state.records.map(x=>x.id===id ? updated : x);
   saveRecords(state.records);
