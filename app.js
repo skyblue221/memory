@@ -115,6 +115,40 @@ function esc(str){
     .replace(/&/g,"&amp;").replace(/</g,"&lt;")
     .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
+
+// 이미지를 리사이즈 + 압축해서 base64로 반환
+// maxSize: 가로/세로 중 긴 쪽의 최대 픽셀 (기본 800px)
+// quality: JPEG 압축 품질 0~1 (기본 0.7)
+function resizeImageFile(file, maxSize = 800, quality = 0.7){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxSize) {
+          height = Math.round(height * (maxSize / width));
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = Math.round(width * (maxSize / height));
+          height = maxSize;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        // JPEG로 압축 (투명 배경이 필요없는 사진/표지에 적합)
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function groupBy(arr, fn){
   return arr.reduce((a,x)=>{ const k=fn(x); (a[k]=a[k]||[]).push(x); return a; }, {});
 }
@@ -835,16 +869,19 @@ async function lookupIsbn(){
   }
 }
 
-function handleCoverFile(e){
+// 책 표지 파일 선택 → 리사이즈 + 압축 후 미리보기
+async function handleCoverFile(e){
   const file = e.target.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    $("coverUrlInput").value = reader.result;
-    $("coverPreviewImg").src = reader.result;
+  const btn = e.target;
+  try {
+    const resized = await resizeImageFile(file, 800, 0.7);
+    $("coverUrlInput").value = resized;
+    $("coverPreviewImg").src = resized;
     $("coverPreview").style.display = "flex";
-  };
-  reader.readAsDataURL(file);
+  } catch(_){
+    alert("사진을 처리하는 중 문제가 생겼어요. 다른 사진으로 시도해주세요.");
+  }
 }
 
 function saveBook(){
@@ -896,15 +933,17 @@ function renderMemoryForm(editId=null, editRecord=null){
 
   $("sheetBackBtn").addEventListener("click", editId ? closeSheet : renderPickStep);
   $("sheetCloseBtn").addEventListener("click", closeSheet);
-  $("memPhotoInput").addEventListener("change", e=>{
+  // 사진 선택 → 리사이즈 + 압축 후 미리보기
+  $("memPhotoInput").addEventListener("change", async e=>{
     const file = e.target.files[0];
     if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ()=>{
-      $("memPhotoPreviewImg").src = reader.result;
+    try {
+      const resized = await resizeImageFile(file, 800, 0.7);
+      $("memPhotoPreviewImg").src = resized;
       $("memPhotoPreview").style.display = "block";
-    };
-    reader.readAsDataURL(file);
+    } catch(_){
+      alert("사진을 처리하는 중 문제가 생겼어요. 다른 사진으로 시도해주세요.");
+    }
   });
 
   // 수정 모드면 기존 값 채우기
